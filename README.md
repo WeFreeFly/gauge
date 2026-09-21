@@ -119,8 +119,6 @@ caches, the keychain entry and any login item — and waits for a yes.
 
 ## Privacy
 
-This is the part that differs most from the commercial alternatives.
-
 **By default Gauge makes no network requests at all.** No licence check, no
 update check, no analytics, no crash reporting. Two features can reach the
 network, and both are off until switched on:

@@ -3,7 +3,7 @@ import Foundation
 
 /// How a graph is filled under its line.
 public enum FadeStyle: String, Codable, CaseIterable, Sendable {
-    /// Colour fading to transparent — the iStat Menus look.
+    /// Colour fading to transparent.
     case gradient
     /// One flat translucent colour.
     case flat

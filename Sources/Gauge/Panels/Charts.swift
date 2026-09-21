@@ -119,8 +119,7 @@ private func autoCeiling(_ plots: [Plot], floor: Double = 1) -> Double {
 // MARK: - History graph
 
 /// The workhorse: one or more series over the retention window, drawn the way
-/// the module is configured. This is the shape iStat Menus puts at the top of
-/// every dropdown.
+/// the module is configured. Every dropdown opens with one of these.
 struct HistoryGraph: View {
     var plots: [Plot]
     var shape: GraphShape = .area
@@ -346,8 +345,8 @@ struct HistoryGraph: View {
         let half = CGSize(width: size.width, height: size.height / 2)
         let scale = Scale(ceiling: resolvedCeiling, floor: floor, size: half)
 
-        // Upper half grows up from the middle, lower half grows down — the
-        // shape iStat Menus uses for upload against download.
+        // Upper half grows up from the middle, lower half grows down, which
+        // is the only way to read a duplex rate without two charts.
         var top = linePath(plots[0].values, scale: scale)
         top.addLine(to: CGPoint(x: size.width, y: half.height))
         top.addLine(to: CGPoint(x: 0, y: half.height))
@@ -398,7 +397,7 @@ struct HistoryGraph: View {
 
 // MARK: - Graph section
 
-/// A graph with the title/value header iStat Menus puts above every one.
+/// A graph with a title on the left and its current value on the right.
 struct GraphSection<Trailing: View>: View {
     let title: String
     var value: String?

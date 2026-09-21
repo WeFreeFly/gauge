@@ -354,8 +354,7 @@ struct Sparkline: View {
     }
 }
 
-/// The span a history graph covers, captioned the way iStat Menus does it so
-/// the axis is not left to guesswork.
+/// The span a history graph covers, so the axis is not left to guesswork.
 struct GraphCaption: View {
     var trailing: String?
     @EnvironmentObject private var settings: GaugeSettings
@@ -446,8 +445,8 @@ struct ProcessList: View {
     let processes: [ProcessUsage]
     let showsMemory: Bool
     var accent: Color = .secondary
-    /// Bar behind each row showing its share of the largest value, the way
-    /// iStat Menus ranks them.
+    /// Bar behind each row showing its share of the largest value, so the
+    /// ranking is visible without reading the numbers.
     var showsBars = true
 
     private var peak: Double {

@@ -9,7 +9,7 @@ import GaugeKit
 /// window up. `--panel cpu [seconds]` does exactly that and nothing else.
 @MainActor
 enum PanelPreviewRun {
-    static func run(module: ModuleID, seconds: TimeInterval, expand: Bool = false) {
+    static func run(module: ModuleID, seconds: TimeInterval) {
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
 
@@ -24,20 +24,11 @@ enum PanelPreviewRun {
             hub.injectDemoWeather()
         }
 
-        let content: AnyView
-        if module == .sensors, expand {
-            content = AnyView(
-                SensorsPanel(initiallyExpanded: Set(SensorGroup.allCases))
-                    .environmentObject(hub)
-                    .environmentObject(hub.settings)
-            )
-        } else {
-            content = AnyView(
-                ModulePanelView(module: module)
-                    .environmentObject(hub)
-                    .environmentObject(hub.settings)
-            )
-        }
+        let content = AnyView(
+            ModulePanelView(module: module)
+                .environmentObject(hub)
+                .environmentObject(hub.settings)
+        )
 
         let panel = PanelWindow(content: content)
         // No status item to hang it off, so place it near the top of the screen.

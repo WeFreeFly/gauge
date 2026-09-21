@@ -65,6 +65,7 @@ enum Benchmark {
         let sensors = SensorMonitor()
         let battery = BatteryMonitor()
         let processes = ProcessMonitor()
+        let frequency = FrequencyMonitor()
 
         var cases: [(String, () -> Void)] = [
             ("CPU", { _ = cpu.sample() }),
@@ -173,6 +174,7 @@ enum DiagnosticsDump {
         let sensors = SensorMonitor()
         let battery = BatteryMonitor()
         let processes = ProcessMonitor()
+        let frequency = FrequencyMonitor()
 
         for pass in 1...max(1, passes) {
             let cpuSample = cpu.sample()
@@ -183,6 +185,7 @@ enum DiagnosticsDump {
             let sensorSample = sensors.sample()
             let batterySample = battery.sample()
             let processSample = processes.sample(limit: 5)
+            let frequencySample = frequency?.sample()
 
             guard pass == passes else {
                 Thread.sleep(forTimeInterval: 1.5)
@@ -213,6 +216,25 @@ enum DiagnosticsDump {
             print("  per-core     " + cpuSample.cores.map {
                 "\($0.clusterName.prefix(1))\($0.id):\(Int($0.total * 100))%"
             }.joined(separator: " "))
+
+            print("\n=== Clocks ===")
+            if let frequencySample {
+                func clock(_ label: String, _ value: Double?, _ maximum: Double, _ active: Double) {
+                    let text = value.map { String(format: "%.2f GHz", $0 / 1000) } ?? "idle"
+                    print("  \(label.padding(toLength: 12, withPad: " ", startingAt: 0)) " +
+                          "\(text.padding(toLength: 10, withPad: " ", startingAt: 0))" +
+                          "max \(String(format: "%.2f GHz", maximum / 1000))  " +
+                          "active \(Format.percent(active))")
+                }
+                clock(cpu.efficiencyClusterName, frequencySample.efficiencyMHz,
+                      frequencySample.maximumEfficiencyMHz, frequencySample.efficiencyActive)
+                clock(cpu.performanceClusterName, frequencySample.performanceMHz,
+                      frequencySample.maximumPerformanceMHz, frequencySample.performanceActive)
+                clock("GPU", frequencySample.gpuMHz, frequencySample.maximumGPUMHz,
+                      frequencySample.gpuActive)
+            } else {
+                print("  not available on this hardware")
+            }
 
             print("\n=== Memory ===")
             print("  used         \(Format.bytes(memorySample.used)) of \(Format.bytes(memorySample.total))" +

@@ -135,15 +135,8 @@ struct NetworkPanel: View {
 // MARK: - Sensors
 
 struct SensorsPanel: View {
-    /// Only `--panel sensors --expand` passes this, to check the tall case.
-    var initiallyExpanded: Set<SensorGroup>?
-
     @EnvironmentObject private var hub: MonitorHub
     @EnvironmentObject private var settings: GaugeSettings
-    /// The cluster groups are the ones worth seeing first; the rest are
-    /// there when wanted. Collapsed groups still show their range.
-    @StateObject private var expandedGroups =
-        UIState<Set<SensorGroup>>([.cpu, .cpuPerformance, .cpuEfficiency])
 
     var body: some View {
         let sensors = hub.snapshot.sensors
@@ -172,36 +165,29 @@ struct SensorsPanel: View {
                     if let adapter = sensors.adapterPower {
                         StatRow(label: "Adapter", value: Format.power(adapter))
                     }
-                    if let storage = sensors.storageTemperature {
-                        StatRow(label: "SSD",
-                                value: Format.temperature(storage, unit: settings.temperatureUnit, decimals: 1))
-                    }
                 }
             }
 
-            let temperatureRange = settings.chartRange("sensors.temperature")
-            let temperatureSeries = hub.series(MonitorHub.Metric.temperature, range: temperatureRange)
-            if !temperatureSeries.isEmpty {
-                VStack(spacing: 3) {
-                    MetricChart(
-                        chart: "sensors.temperature",
-                        title: "CPU die temperature",
-                        sources: [.init(metric: MonitorHub.Metric.temperature, color: look.primary,
-                                        label: "CPU die",
-                                        format: { Format.temperature($0, unit: settings.temperatureUnit,
-                                                                     decimals: 1) })],
-                        shape: look.shape == .stacked || look.shape == .mirrored ? .area : look.shape,
-                        ceiling: 100,
-                        height: 46,
-                        appearance: look,
-                        value: sensors.socTemperature.map {
-                            Format.temperature($0, unit: settings.temperatureUnit, decimals: 1)
-                        },
-                        caption: "0–100 °C"
-                    )
-                    HeatStrip(values: temperatureSeries.averages)
-                }
-            }
+            ClockSection()
+
+            MetricChart(
+                chart: "sensors.temperature",
+                title: "CPU die temperature",
+                sources: [.init(metric: MonitorHub.Metric.temperature, color: look.primary,
+                                label: "CPU die",
+                                format: { Format.temperature($0, unit: settings.temperatureUnit,
+                                                             decimals: 1) })],
+                shape: look.shape == .stacked || look.shape == .mirrored ? .area : look.shape,
+                ceiling: 100,
+                height: 46,
+                appearance: look,
+                value: sensors.socTemperature.map {
+                    Format.temperature($0, unit: settings.temperatureUnit, decimals: 1)
+                },
+                caption: "0–100 °C"
+            )
+            HeatStrip(values: hub.series(MonitorHub.Metric.temperature,
+                                         range: settings.chartRange("sensors.temperature")).averages)
 
             MetricChart(
                 chart: "sensors.power",
@@ -240,131 +226,148 @@ struct SensorsPanel: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 6) {
-                let groups = sensors.grouped.filter { $0.group != .fans }
-                ForEach(groups, id: \.group) { entry in
-                    SensorGroupSection(
-                        group: entry.group,
-                        title: title(for: entry.group),
-                        readings: entry.readings,
-                        isExpanded: expandedGroups.value.contains(entry.group),
-                        toggle: {
-                            if expandedGroups.value.contains(entry.group) {
-                                expandedGroups.value.remove(entry.group)
-                            } else {
-                                expandedGroups.value.insert(entry.group)
-                            }
-                        }
-                    )
-                }
+            if sensors.storageTemperature != nil {
+                MetricChart(
+                    chart: "sensors.ssd",
+                    title: "SSD temperature",
+                    sources: [.init(metric: MonitorHub.Metric.ssdTemperature,
+                                    color: Color(hex: "#5AC8FA"), label: "SSD",
+                                    format: { Format.temperature($0, unit: settings.temperatureUnit,
+                                                                 decimals: 1) })],
+                    shape: .area,
+                    ceiling: 90,
+                    floorValue: 20,
+                    height: 40,
+                    appearance: look,
+                    value: sensors.storageTemperature.map {
+                        Format.temperature($0, unit: settings.temperatureUnit, decimals: 1)
+                    },
+                    caption: "20–90 °C"
+                )
             }
 
-            HStack(spacing: 10) {
-                Button("Expand all") {
-                    expandedGroups.value = Set(sensors.grouped.map(\.group))
-                }
-                .buttonStyle(.link)
-                .font(.system(size: 10))
-                Button("Collapse all") { expandedGroups.value = [] }
-                    .buttonStyle(.link)
-                    .font(.system(size: 10))
-                Spacer()
-                Text("\(sensors.readings.count) sensors")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
+            if let batteryTemperature = sensors.batteryTemperature {
+                let cells = sensors.readings.filter { $0.group == .battery }
+                MetricChart(
+                    chart: "sensors.batteryTemperature",
+                    title: "Battery temperature",
+                    sources: [.init(metric: MonitorHub.Metric.batteryTemperature,
+                                    color: Color(hex: "#30D158"), label: "Battery",
+                                    format: { Format.temperature($0, unit: settings.temperatureUnit,
+                                                                 decimals: 1) })],
+                    shape: .area,
+                    ceiling: 60,
+                    floorValue: 10,
+                    height: 40,
+                    appearance: look,
+                    value: Format.temperature(batteryTemperature, unit: settings.temperatureUnit,
+                                              decimals: 1),
+                    caption: cells.count > 1
+                        ? "mean of \(cells.count) cells, \(cellRange(cells))" : "10–60 °C"
+                )
             }
 
             PanelFooter(onSettings: { SettingsWindowController.shared.show(hub: hub, selecting: .sensors) })
         }
-        .onAppear {
-            if let initiallyExpanded { expandedGroups.value = initiallyExpanded }
-        }
     }
 
-    /// Once a calibration exists, the cluster groups are named after this
-    /// machine's own clusters rather than generic wording.
-    private func title(for group: SensorGroup) -> String {
-        guard let calibration = settings.sensorCalibration else { return group.rawValue }
-        return switch group {
-        case .cpuPerformance: "CPU · \(calibration.performanceClusterName) cores"
-        case .cpuEfficiency: "CPU · \(calibration.efficiencyClusterName) cores"
-        default: group.rawValue
+    /// The spread across the pack says more than the mean alone: cells that
+    /// disagree by several degrees are worth noticing.
+    private func cellRange(_ cells: [SensorReading]) -> String {
+        let values = cells.map(\.value)
+        guard let low = values.min(), let high = values.max() else { return "" }
+        return "\(Format.temperature(low, unit: settings.temperatureUnit))–"
+             + "\(Format.temperature(high, unit: settings.temperatureUnit))"
+    }
+}
+
+/// Clock speeds for each CPU cluster and the GPU.
+///
+/// Apple Silicon reports no current frequency; these are the residency-weighted
+/// averages over the last sampling interval, which is the only figure the
+/// hardware makes available.
+struct ClockSection: View {
+    @EnvironmentObject private var hub: MonitorHub
+    @EnvironmentObject private var settings: GaugeSettings
+
+    var body: some View {
+        let clocks = hub.snapshot.frequency
+        let hasAny = clocks.maximumEfficiencyMHz > 0 || clocks.maximumPerformanceMHz > 0
+
+        if hasAny {
+            VStack(alignment: .leading, spacing: 4) {
+                SectionLabel(text: "Frequency")
+                ClockRow(name: "\(hub.efficiencyClusterName) cores",
+                         megahertz: clocks.efficiencyMHz,
+                         maximum: clocks.maximumEfficiencyMHz,
+                         active: clocks.efficiencyActive,
+                         color: .teal)
+                ClockRow(name: "\(hub.performanceClusterName) cores",
+                         megahertz: clocks.performanceMHz,
+                         maximum: clocks.maximumPerformanceMHz,
+                         active: clocks.performanceActive,
+                         color: settings.graph(.cpu).primary)
+                if clocks.maximumGPUMHz > 0 {
+                    ClockRow(name: "GPU",
+                             megahertz: clocks.gpuMHz,
+                             maximum: clocks.maximumGPUMHz,
+                             active: clocks.gpuActive,
+                             color: settings.graph(.gpu).primary)
+                }
+            }
         }
     }
 }
 
-/// One collapsible group of sensors. Collapsed it still reports the range,
-/// so a group can be judged without opening it.
-struct SensorGroupSection: View {
-    let group: SensorGroup
-    let title: String
-    let readings: [SensorReading]
-    let isExpanded: Bool
-    let toggle: () -> Void
-
-    @EnvironmentObject private var settings: GaugeSettings
-    @StateObject private var hovering = UIState(false)
-
-    private var summary: String {
-        let values = readings.map(\.value)
-        guard let low = values.min(), let high = values.max() else { return "" }
-        guard let kind = readings.first?.kind else { return "" }
-        func format(_ value: Double) -> String {
-            SensorReading(id: "", name: "", group: group, kind: kind, value: value)
-                .formatted(temperatureUnit: settings.temperatureUnit)
-        }
-        return low == high ? format(high) : "\(format(low))–\(format(high))"
-    }
+struct ClockRow: View {
+    let name: String
+    let megahertz: Double?
+    let maximum: Double
+    let active: Double
+    let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Button(action: toggle) {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    Text(title.uppercased())
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .kerning(0.5)
-                    Text("\(readings.count)")
-                        .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.primary.opacity(0.08)))
-                    Spacer(minLength: 6)
-                    Text(summary)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.primary.opacity(hovering.value ? 0.07 : 0))
-                )
-                .padding(.horizontal, -5)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .onHover { hovering.value = $0 }
+        HStack(spacing: 8) {
+            Text(name)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(width: 112, alignment: .leading)
+                .lineLimit(1)
 
-            if isExpanded {
-                if let explanation = group.explanation {
-                    Text(explanation)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.bottom, 1)
-                }
-                ForEach(readings) { reading in
-                    StatRow(label: reading.name,
-                            value: reading.formatted(temperatureUnit: settings.temperatureUnit))
+            // The bar is the clock against this unit's own ceiling; the
+            // dimmer part behind it is how much of the interval it ran at all.
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(color.opacity(0.25))
+                        .frame(width: geometry.size.width * active.clamped(to: 0...1))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geometry.size.width * fraction)
                 }
             }
+            .frame(height: 5)
+
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .frame(width: 62, alignment: .trailing)
+                .foregroundStyle(megahertz == nil ? .secondary : .primary)
         }
+        .help(megahertz == nil
+              ? "\(name) stayed idle over the last sample"
+              : "\(name): \(label) of \(String(format: "%.2f GHz", maximum / 1000)) maximum, "
+                + "running \(Format.percent(active)) of the interval")
+    }
+
+    private var fraction: Double {
+        guard let megahertz, maximum > 0 else { return 0 }
+        return (megahertz / maximum).clamped(to: 0...1)
+    }
+
+    private var label: String {
+        guard let megahertz else { return "idle" }
+        return String(format: "%.2f GHz", megahertz / 1000)
     }
 }
 

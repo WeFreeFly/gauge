@@ -738,6 +738,60 @@ t.suite("Live collectors") {
         }
     }
 
+    t.test("the power manager publishes usable frequency tables") {
+        let tables = FrequencyMonitor.frequencyTables()
+        #if arch(arm64)
+        t.expect(!tables.efficiency.isEmpty, "no efficiency-cluster table")
+        t.expect(!tables.performance.isEmpty, "no performance-cluster table")
+
+        for (label, table) in [("efficiency", tables.efficiency),
+                               ("performance", tables.performance),
+                               ("gpu", tables.gpu)] where !table.isEmpty {
+            t.expect(table == table.sorted(), "\(label) states should ascend")
+            t.expect(table.first ?? 0 > 100, "\(label) starts at \(table.first ?? 0) MHz")
+            t.expect(table.last ?? 0 < 10_000, "\(label) tops out at \(table.last ?? 0) MHz")
+        }
+        // The fast cluster clocks higher than the efficient one; that is what
+        // makes it the fast one.
+        if let slow = tables.efficiency.last, let fast = tables.performance.last {
+            t.expect(fast > slow, "performance \(fast) should exceed efficiency \(slow) MHz")
+        }
+        #endif
+    }
+
+    t.test("clock readings stay inside the hardware's own range") {
+        guard let monitor = FrequencyMonitor() else { return }
+        _ = monitor.sample()                    // first pass has no baseline
+        Thread.sleep(forTimeInterval: 0.4)
+        let sample = monitor.sample()
+
+        for (label, value, maximum) in [
+            ("efficiency", sample.efficiencyMHz, sample.maximumEfficiencyMHz),
+            ("performance", sample.performanceMHz, sample.maximumPerformanceMHz),
+            ("gpu", sample.gpuMHz, sample.maximumGPUMHz),
+        ] {
+            guard let value else { continue }   // idle is a valid answer
+            t.expect(value > 0, "\(label) reported \(value) MHz")
+            t.expect(value <= maximum * 1.02,
+                     "\(label) reported \(value) MHz above its \(maximum) MHz ceiling")
+        }
+        for (label, active) in [("efficiency", sample.efficiencyActive),
+                                ("performance", sample.performanceActive),
+                                ("gpu", sample.gpuActive)] {
+            t.expect(active >= 0 && active <= 1, "\(label) active share is \(active)")
+        }
+    }
+
+    t.test("an idle unit reports no clock rather than zero") {
+        // A unit that never left idle has no speed to average, and reporting
+        // 0 GHz would read as a stopped clock instead of an unused one.
+        guard let monitor = FrequencyMonitor() else { return }
+        _ = monitor.sample()
+        Thread.sleep(forTimeInterval: 0.3)
+        let sample = monitor.sample()
+        if sample.gpuActive == 0 { t.isNil(sample.gpuMHz, "idle GPU") }
+    }
+
     t.test("process sampling produces named processes with sane usage") {
         let monitor = ProcessMonitor()
         _ = monitor.sample(limit: 5)

@@ -80,6 +80,8 @@ struct CPUPanel: View {
                         (hub.efficiencyClusterName, Format.percent(cpu.efficiencyLoad)),
                       ])
 
+            ClockSection()
+
             MetricChart(
                 chart: "cpu.usage",
                 title: "Usage",

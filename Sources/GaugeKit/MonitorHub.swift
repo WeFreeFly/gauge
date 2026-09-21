@@ -15,6 +15,7 @@ public final class MonitorHub: ObservableObject {
         public var network = NetworkSnapshot()
         public var sensors = SensorSnapshot()
         public var battery = BatterySnapshot()
+        public var frequency = FrequencySnapshot()
         public var topByCPU: [ProcessUsage] = []
         public var topByMemory: [ProcessUsage] = []
         public var timestamp = Date()
@@ -75,6 +76,8 @@ public final class MonitorHub: ObservableObject {
     private let sensorMonitor = SensorMonitor()
     private let batteryMonitor = BatteryMonitor()
     private let processMonitor = ProcessMonitor()
+    /// Nil on hardware that does not publish DVFS residency.
+    private let frequencyMonitor = FrequencyMonitor()
     private let publicIP = PublicIPResolver()
 
     private let queue = DispatchQueue(label: "com.gauge.sampling", qos: .utility)
@@ -263,6 +266,7 @@ public final class MonitorHub: ObservableObject {
             snapshot.network = self.networkMonitor.sample(live: live)
             snapshot.sensors = self.sensorMonitor.sample(live: live)
             snapshot.battery = self.batteryMonitor.sample(live: live)
+            if let frequency = self.frequencyMonitor?.sample() { snapshot.frequency = frequency }
             if wantsProcesses {
                 let processes = self.processMonitor.sample()
                 snapshot.topByCPU = processes.byCPU
@@ -301,6 +305,11 @@ public final class MonitorHub: ObservableObject {
         public static let fan = "sensors.fan"
         public static let power = "sensors.power"
         public static let battery = "battery.charge"
+        public static let efficiencyClock = "cpu.clock.efficiency"
+        public static let performanceClock = "cpu.clock.performance"
+        public static let gpuClock = "gpu.clock"
+        public static let ssdTemperature = "sensors.ssd"
+        public static let batteryTemperature = "sensors.battery"
         public static func core(_ index: Int) -> String { "cpu.core.\(index)" }
     }
 
@@ -329,6 +338,19 @@ public final class MonitorHub: ObservableObject {
         }
         if let fan = snapshot.sensors.fans.first { history.record(Metric.fan, fan.rpm, at: date) }
         if let power = snapshot.sensors.systemPower { history.record(Metric.power, power, at: date) }
+        if let storage = snapshot.sensors.storageTemperature {
+            history.record(Metric.ssdTemperature, storage, at: date)
+        }
+        if let batteryTemperature = snapshot.sensors.batteryTemperature {
+            history.record(Metric.batteryTemperature, batteryTemperature, at: date)
+        }
+        if let clock = snapshot.frequency.efficiencyMHz {
+            history.record(Metric.efficiencyClock, clock, at: date)
+        }
+        if let clock = snapshot.frequency.performanceMHz {
+            history.record(Metric.performanceClock, clock, at: date)
+        }
+        if let clock = snapshot.frequency.gpuMHz { history.record(Metric.gpuClock, clock, at: date) }
         if snapshot.battery.isPresent { history.record(Metric.battery, snapshot.battery.charge, at: date) }
     }
 
@@ -566,8 +588,13 @@ public final class MonitorHub: ObservableObject {
                 history.record(Metric.diskRead, wave(1.4e7, 1.3e7, 1.8, x), at: date)
                 history.record(Metric.diskWrite, wave(6e6, 5e6, 2.9, x), at: date)
                 history.record(Metric.temperature, wave(56, 9, 1.6, x), at: date)
+                history.record(Metric.ssdTemperature, wave(41, 6, 0.9, x), at: date)
+                history.record(Metric.batteryTemperature, wave(28, 4, 0.6, x), at: date)
                 history.record(Metric.power, wave(18, 9, 2.1, x), at: date)
                 history.record(Metric.fan, wave(2600, 700, 1.2, x), at: date)
+                history.record(Metric.efficiencyClock, wave(2200, 700, 2.4, x), at: date)
+                history.record(Metric.performanceClock, wave(3200, 1200, 1.9, x), at: date)
+                history.record(Metric.gpuClock, wave(700, 500, 2.8, x), at: date)
                 history.record(Metric.battery, min(1, 0.55 + 0.4 * x), at: date)
             }
         }

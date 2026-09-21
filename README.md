@@ -16,7 +16,7 @@
 | **Memory** | App / Wired / Compressed / Cached แยกสี, memory pressure, swap, page-in/out |
 | **Disks** | ความจุทุก volume ที่ mount อยู่, อัตรา read/write แบบเรียลไทม์, ยอดสะสมตั้งแต่ boot |
 | **Network** | ดาวน์/อัปโหลดเรียลไทม์, peak, ยอดสะสม, ทุก interface พร้อม IP, public IP (ต้องเปิดเอง) |
-| **Sensors** | อุณหภูมิทุกตัวที่เครื่องเปิดเผย (บน M5 ได้ 46 ตัว) จัดกลุ่มตามที่**วัดจริง**ว่าตัวไหนคือ CPU, พัดลมพร้อมช่วง RPM, กำลังไฟระบบและอะแดปเตอร์ |
+| **Sensors** | อุณหภูมิ CPU die (เฉลี่ย + สูงสุด), **ความถี่ Efficiency / Super / GPU เป็น GHz**, กราฟอุณหภูมิ CPU, กำลังไฟ, พัดลม, กราฟอุณหภูมิ SSD และอุณหภูมิแบตรวม (เฉลี่ยจากทุกเซลล์) — รายการเซ็นเซอร์ดิบทั้ง 47 ตัวอยู่ใน Settings → Sensors |
 | **Battery** | %, health, cycle count, ความจุจริงหน่วย mAh, แรงดัน, กระแส, อุณหภูมิ, เวลาที่เหลือ |
 | **Time** | นาฬิกาปรับ format ได้ + world clocks |
 | **Weather** | สภาพอากาศปัจจุบัน / รายชั่วโมง / 7 วัน — **ปิดไว้เป็นค่าเริ่มต้น** |
@@ -262,6 +262,7 @@ snapshot ใหม่ทุกครั้งที่ตั้งภาพ)
 | อุณหภูมิ | `IOHIDEventSystemClient` (Apple Silicon) / SMC keys (Intel) |
 | พัดลม, กำลังไฟ | SMC ผ่าน `AppleSMC` user client |
 | Battery | `IOPowerSources` + `AppleSmartBattery` + SMC gas gauge |
+| ความถี่ CPU/GPU | `IOReport` DVFS residency × ตาราง `voltage-states` ใน pmgr |
 
 ไม่ต้องใช้สิทธิ์ root และไม่ต้องติดตั้ง daemon (ต่างจาก iStat Menus ที่รัน daemon เป็น root)
 

@@ -98,7 +98,61 @@ enum PreviewRenderer {
             }
         }
 
+        // One strip showing the menu bar items together, which is the first
+        // thing anyone wants to see.
+        for (label, appearance) in appearances {
+            if let image = menubarStrip(hub: hub, appearance: appearance) {
+                write(image, to: directory.appendingPathComponent("menubar-strip-\(label).png"),
+                      background: nil)
+            }
+        }
+
         print("Wrote previews to \(directory.path)")
+    }
+
+    /// Lays the enabled modules out the way they sit in a real menu bar.
+    private static func menubarStrip(hub: MonitorHub, appearance: NSAppearance) -> NSImage? {
+        let modules: [ModuleID] = [.combined, .cpu, .gpu, .memory, .disks, .network,
+                                   .sensors, .battery, .weather, .time]
+        let styles: [ModuleID: MenubarStyle] = [
+            .combined: .textAndGraph, .cpu: .textAndGraph, .gpu: .text,
+            .memory: .textAndGraph, .disks: .text, .network: .textAndGraph,
+            .sensors: .text, .battery: .gauge, .weather: .text, .time: .text,
+        ]
+
+        var images: [NSImage] = []
+        for module in modules {
+            let content = MenubarContentBuilder.content(for: module, hub: hub)
+            images.append(MenubarRenderer.render(content, style: styles[module] ?? .text,
+                                                 graphWidth: hub.settings.menubarGraphWidth,
+                                                 appearance: appearance))
+        }
+
+        let spacing: CGFloat = 10
+        let padding: CGFloat = 16
+        let height = max(28, (images.map(\.size.height).max() ?? 22) + 10)
+        let width = images.reduce(0) { $0 + $1.size.width }
+            + spacing * CGFloat(images.count - 1) + padding * 2
+
+        let strip = NSImage(size: NSSize(width: width, height: height))
+        strip.lockFocus()
+        appearance.performAsCurrentDrawingAppearance {
+            // A menu bar sits on the desktop, so the strip gets a backdrop
+            // rather than floating on nothing.
+            let isDark = appearance.name == .darkAqua
+            (isDark ? NSColor(white: 0.13, alpha: 1) : NSColor(white: 0.92, alpha: 1)).setFill()
+            NSBezierPath(roundedRect: CGRect(x: 0, y: 0, width: width, height: height),
+                         xRadius: 6, yRadius: 6).fill()
+
+            var x = padding
+            for image in images {
+                image.draw(in: CGRect(x: x, y: (height - image.size.height) / 2,
+                                      width: image.size.width, height: image.size.height))
+                x += image.size.width + spacing
+            }
+        }
+        strip.unlockFocus()
+        return strip
     }
 
     private static func backdrop(for appearance: NSAppearance) -> NSColor {

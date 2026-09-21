@@ -466,33 +466,33 @@ public final class MonitorHub: ObservableObject {
         for index in 0..<samples {
             let user = wave(0.22, 0.16, 2.2, 0.03, index)
             let system = wave(0.08, 0.05, 3.1, 0.015, index)
-            liveHistory.cpuUser.append(user)
-            liveHistory.cpuSystem.append(system)
-            liveHistory.cpu.append(min(1, user + system))
-            liveHistory.cpuPerformance.append(wave(0.2, 0.18, 1.7, 0.04, index))
-            liveHistory.cpuEfficiency.append(wave(0.45, 0.25, 2.6, 0.05, index))
-            for core in liveHistory.perCore.indices {
-                liveHistory.perCore[core].append(
+            history.cpuUser.append(user)
+            history.cpuSystem.append(system)
+            history.cpu.append(min(1, user + system))
+            history.cpuPerformance.append(wave(0.2, 0.18, 1.7, 0.04, index))
+            history.cpuEfficiency.append(wave(0.45, 0.25, 2.6, 0.05, index))
+            for core in history.perCore.indices {
+                history.perCore[core].append(
                     wave(core < 6 ? 0.45 : 0.2, 0.3, 2.0 + Double(core) * 0.4, 0.08, index))
             }
-            liveHistory.loadAverage.append(wave(4, 3, 1.4, 0.4, index))
+            history.loadAverage.append(wave(4, 3, 1.4, 0.4, index))
 
             let total = memoryMonitor.physicalMemory
-            liveHistory.memoryApp.append(wave(total * 0.28, total * 0.06, 1.3, total * 0.01, index))
-            liveHistory.memoryWired.append(wave(total * 0.14, total * 0.02, 0.8, total * 0.004, index))
-            liveHistory.memoryCompressed.append(wave(total * 0.2, total * 0.08, 1.9, total * 0.01, index))
-            liveHistory.memory.append(wave(0.62, 0.12, 1.3, 0.02, index))
-            liveHistory.swap.append(wave(4e8, 3e8, 0.9, 2e7, index))
+            history.memoryApp.append(wave(total * 0.28, total * 0.06, 1.3, total * 0.01, index))
+            history.memoryWired.append(wave(total * 0.14, total * 0.02, 0.8, total * 0.004, index))
+            history.memoryCompressed.append(wave(total * 0.2, total * 0.08, 1.9, total * 0.01, index))
+            history.memory.append(wave(0.62, 0.12, 1.3, 0.02, index))
+            history.swap.append(wave(4e8, 3e8, 0.9, 2e7, index))
 
-            liveHistory.gpu.append(wave(0.18, 0.17, 3.3, 0.05, index))
-            liveHistory.networkDown.append(wave(2.2e6, 2.0e6, 2.4, 3e5, index))
-            liveHistory.networkUp.append(wave(4e5, 3.5e5, 3.0, 8e4, index))
-            liveHistory.diskRead.append(wave(1.4e7, 1.3e7, 1.8, 2e6, index))
-            liveHistory.diskWrite.append(wave(6e6, 5e6, 2.9, 1e6, index))
-            liveHistory.socTemperature.append(wave(56, 9, 1.6, 1.2, index))
-            liveHistory.fanRPM.append(wave(2600, 700, 1.2, 60, index))
-            liveHistory.power.append(wave(18, 9, 2.1, 1.5, index))
-            liveHistory.batteryCharge.append(min(1, 0.55 + 0.4 * Double(index) / Double(samples)))
+            history.gpu.append(wave(0.18, 0.17, 3.3, 0.05, index))
+            history.networkDown.append(wave(2.2e6, 2.0e6, 2.4, 3e5, index))
+            history.networkUp.append(wave(4e5, 3.5e5, 3.0, 8e4, index))
+            history.diskRead.append(wave(1.4e7, 1.3e7, 1.8, 2e6, index))
+            history.diskWrite.append(wave(6e6, 5e6, 2.9, 1e6, index))
+            history.socTemperature.append(wave(56, 9, 1.6, 1.2, index))
+            history.fanRPM.append(wave(2600, 700, 1.2, 60, index))
+            history.power.append(wave(18, 9, 2.1, 1.5, index))
+            history.batteryCharge.append(min(1, 0.55 + 0.4 * Double(index) / Double(samples)))
         }
         self.liveHistory = history
 

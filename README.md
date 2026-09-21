@@ -1,0 +1,209 @@
+# Gauge
+
+โปรแกรมมอนิเตอร์ระบบบน menu bar ของ macOS — ทางเลือกทดแทน iStat Menus ที่อ่านค่าทุกอย่างจากเครื่องโดยตรง
+ไม่มี license server ไม่มี telemetry และไม่ต่อเน็ตเลยจนกว่าจะเปิดใช้เองเป็นรายฟีเจอร์
+
+สร้างและทดสอบบน MacBook Pro (Mac17,2 · Apple M5) / macOS 27 / Swift 6.4
+
+---
+
+## สิ่งที่ทำได้
+
+| Module | รายละเอียด |
+|---|---|
+| **CPU** | โหลดรวม แยก user/system/idle, per-core แยก P-core / E-core, load average, uptime, จำนวน process/thread, top processes |
+| **GPU** | Device / Renderer / Tiler utilisation, หน่วยความจำที่ GPU ใช้ |
+| **Memory** | App / Wired / Compressed / Cached แยกสี, memory pressure, swap, page-in/out |
+| **Disks** | ความจุทุก volume ที่ mount อยู่, อัตรา read/write แบบเรียลไทม์, ยอดสะสมตั้งแต่ boot |
+| **Network** | ดาวน์/อัปโหลดเรียลไทม์, peak, ยอดสะสม, ทุก interface พร้อม IP, public IP (ต้องเปิดเอง) |
+| **Sensors** | อุณหภูมิทุกตัวที่เครื่องเปิดเผย (บน M5 ได้ 46 ตัว) จัดกลุ่มตามที่**วัดจริง**ว่าตัวไหนคือ CPU, พัดลมพร้อมช่วง RPM, กำลังไฟระบบและอะแดปเตอร์ |
+| **Battery** | %, health, cycle count, ความจุจริงหน่วย mAh, แรงดัน, กระแส, อุณหภูมิ, เวลาที่เหลือ |
+| **Time** | นาฬิกาปรับ format ได้ + world clocks |
+| **Weather** | สภาพอากาศปัจจุบัน / รายชั่วโมง / 7 วัน — **ปิดไว้เป็นค่าเริ่มต้น** |
+| **Combined** | สรุปทุกอย่างในเมนูเดียว |
+
+แต่ละ module มี menu bar item ของตัวเอง เลือกรูปแบบแสดงผลได้ 5 แบบ: Text, Graph, Text + Graph, Gauge, Icon
+
+### หน้าตาและสี
+
+ปรับได้ที่ **Settings → Appearance** (หรือในหน้าของแต่ละ module)
+
+- **สีหลัก / สีรอง** ของกราฟแต่ละ module เลือกเองได้ผ่าน colour picker
+- **รูปแบบ fade** 4 แบบ
+  - `Fade to clear` — ไล่จากสีไปโปร่งใส (ค่าเริ่มต้น แบบเดียวกับ iStat Menus)
+  - `Solid fill` — สีทึบระดับเดียว
+  - `Line only` — เส้นอย่างเดียว ไม่มีพื้น
+  - `Fade between colours` — ไล่จากสีหลักไปสีรอง
+- **ความเข้มของ fade** ปรับได้ 5–100%
+- **สลับได้ว่าจะให้ตัวเลขเปลี่ยนสีตามโหลด** (เขียว→เหลือง→ส้ม→แดง) หรือใช้สีที่เลือกไว้ตลอด
+- **พื้นหลัง dropdown** เลือกโปร่งแสง (แบบเมนูระบบ) หรือทึบ
+- **ไฮไลต์แถวตอนเอาเมาส์ชี้** เปิด/ปิดได้
+- **ความกว้างกราฟบน menu bar** 16–80 pt
+- มีตัวอย่างสดในหน้า settings เห็นผลทันทีก่อนกด
+
+---
+
+## ติดตั้ง
+
+```bash
+./build.sh                      # build + ประกอบ .app + เซ็นแบบ ad-hoc
+open build/Gauge.app            # ลองใช้
+cp -R build/Gauge.app /Applications/   # ติดตั้งจริง
+```
+
+ต้องมีแค่ **Command Line Tools** (`xcode-select --install`) ไม่ต้องลง Xcode เต็ม
+
+### คำสั่งอื่น
+
+```bash
+swift run GaugeTests                       # ชุดทดสอบ
+build/Gauge.app/Contents/MacOS/Gauge --dump      # พิมพ์ค่าที่อ่านได้ทั้งหมดหนึ่งรอบ
+build/Gauge.app/Contents/MacOS/Gauge --preview ./out   # render menu bar + panel ทุกแบบเป็น PNG
+build/Gauge.app/Contents/MacOS/Gauge --weather "Bangkok"  # ทดสอบ weather provider
+build/Gauge.app/Contents/MacOS/Gauge --bench       # จับเวลาการอ่านค่าแต่ละตัว
+build/Gauge.app/Contents/MacOS/Gauge --map-sensors # หาว่าเซ็นเซอร์ตัวไหนคือ CPU จริง (ใช้เวลา ~2 นาที)
+swift Scripts/make-icon.swift              # สร้างไอคอนใหม่
+```
+
+---
+
+## เซ็นเซอร์ไหนคือ CPU จริง — วัดเอา ไม่ใช่เดา
+
+Apple ไม่เคยประกาศว่าเซ็นเซอร์ชื่อ `PMU tdie7` วัดอะไร แอปมอนิเตอร์ทั่วไปจึงเดาเอา
+Gauge ใช้วิธีวัดแทน: สั่งโหลดทีละคลัสเตอร์ (ผ่าน thread QoS — งาน background จะถูกจำกัดให้อยู่บน
+efficiency core ส่วนงาน user-interactive จะวิ่งบนคอร์เร็ว) แล้วดูว่าเซ็นเซอร์ตัวไหนร้อนตาม
+
+ผลบน Mac17,2 (M5):
+
+| กลุ่มเซ็นเซอร์ | Δ ตอนโหลด Efficiency | Δ ตอนโหลด Super | สรุป |
+|---|---|---|---|
+| `PMU tdie1–14` | +6.9 ถึง +13.3 °C | +8.5 ถึง +19.5 °C | **ได compute ของ CPU** |
+| `PMU2 tdie1–10` | +0.2 ถึง +1.0 °C | +0.9 ถึง +1.3 °C | คนละบริเวณ ไม่ใช่ CPU |
+| `NAND CH0` | +3.0 °C | −2.3 °C | SSD (ร้อนจาก I/O ไม่ใช่ CPU) |
+
+ผลที่ตามมา 2 อย่าง:
+
+1. **ค่า "CPU temperature" เฉลี่ยเฉพาะ `PMU tdie*`** — ตอนแรกโค้ดเฉลี่ยรวม PMU2 เข้าไปด้วย
+   ทำให้ค่าต่ำกว่าจริงราว 6–8 °C (แสดง 51 °C ทั้งที่ของจริง 59.6 °C)
+2. **ไม่ map เซ็นเซอร์เป็นรายคอร์** ความร้อนกระจายทั่วได เซ็นเซอร์ทุกตัวขยับตามทั้งสองคลัสเตอร์
+   (`tdie1` เอียงไปทาง Super ที่ ΔP/ΔE ≈ 1.9 ส่วน `tdie8` เอียงไป Efficiency ที่ ≈ 0.9 — ไม่แยกขาดพอ)
+   Gauge จึงรายงาน **ค่าเฉลี่ยของได** กับ **ค่าสูงสุด** แทนการอ้างว่ารู้อุณหภูมิรายคอร์
+
+รันซ้ำบนเครื่องคุณเองได้ด้วย `Gauge --map-sensors`
+
+ส่วนชื่อคลัสเตอร์ CPU เอามาจากระบบตรง ๆ (`hw.perflevel0.name`) — บน M5 คือ **Super** กับ
+**Efficiency** ไม่ใช่ P/E ที่ hard-code ไว้ และรู้ว่าคอร์ไหนอยู่คลัสเตอร์ไหนจาก `cluster-type`
+ใน IORegistry ไม่ใช่การเดาลำดับ
+
+---
+
+## ประสิทธิภาพ
+
+ตัวมอนิเตอร์ที่กินแรงกว่าสิ่งที่มันเฝ้าดูก็ไม่มีประโยชน์ `--bench` จับเวลาแต่ละ collector:
+
+| collector | ตอนเปิด panel | ตอนพับอยู่ (ปกติ) |
+|---|---|---|
+| Sensors | 43 ms | 16 ms ทุก 4 วินาที |
+| Network | 13.6 ms | 1.3 ms |
+| Disk | 6.2 ms | 0.07 ms |
+| GPU | 0.8 ms | 0.8 ms |
+| CPU + Memory | 0.01 ms | 0.01 ms |
+| Processes | 1.9 ms | ทุก 15 วินาที |
+
+วิธีที่ใช้ลด: เก็บชื่อ interface ไว้ใน cache (ทั้งกรณีเจอและไม่เจอ), ใช้ `inet_ntop` แทน
+`getnameinfo`, อ่าน volume capacity ทุก 10 วินาทีแทนทุก tick, อ่านเซ็นเซอร์เฉพาะที่ menu bar
+ใช้จริงตอนไม่มี panel เปิด และไม่ตั้งภาพ menu bar ใหม่ถ้าเนื้อหาไม่เปลี่ยน (AppKit จะสร้าง
+snapshot ใหม่ทุกครั้งที่ตั้งภาพ)
+
+ผลจริง: **~1% CPU และ 24 MB RSS** ตอนพับอยู่ (เดิม 3.7% / 100 MB)
+
+---
+
+## เรื่องความเป็นส่วนตัว
+
+นี่คือจุดที่ตั้งใจออกแบบให้ต่างจาก iStat Menus ชัด ๆ
+
+**ค่าเริ่มต้น Gauge ไม่ส่งอะไรออกนอกเครื่องเลย** ไม่มีการเช็ก license ไม่มีการเช็กอัปเดต ไม่มี analytics
+
+มีแค่ 2 อย่างที่ต่อเน็ต และทั้งคู่ **ปิดไว้จนกว่าจะเปิดเอง**:
+
+1. **Weather** — ส่งเฉพาะพิกัดที่เลือกไปยัง provider
+   - `Open-Meteo` (ค่าเริ่มต้น) — ฟรี ไม่ต้องสมัคร ไม่ต้องใช้ API key ไม่มี user id ในคำขอ
+   - `AccuWeather` (ทางเลือก) — ต้องใช้ API key ซึ่งเก็บใน **Keychain** ไม่ใช่ไฟล์ preferences
+   - แอปไม่ขอสิทธิ์ Location Services — ผู้ใช้พิมพ์ชื่อเมืองเอง
+2. **Public IP** — ยิงไปที่ endpoint ที่แก้ URL ได้เอง อย่างมากทุก 15 นาที
+
+> **ถาม: weather จำเป็นไหม?**
+> ไม่จำเป็นต่อการมอนิเตอร์ระบบเลย มันเป็นฟีเจอร์เดียวที่บังคับให้ต้องต่อเน็ตและเปิดเผยตำแหน่ง
+> จึงแยกออกมาเป็น opt-in แทนที่จะฝังรวมไปกับ module อื่น เปิดใช้ก็ได้ ไม่เปิดแอปก็ทำงานครบทุกอย่าง
+
+---
+
+## แหล่งข้อมูลของตัวเลขแต่ละตัว
+
+| ข้อมูล | API ที่ใช้ |
+|---|---|
+| CPU, memory | Mach `host_processor_info` / `host_statistics64` |
+| Processes | `libproc` (`proc_listpids`, `proc_pid_rusage`) |
+| GPU | IORegistry `IOAccelerator` → `PerformanceStatistics` |
+| Disks | `IOBlockStorageDriver` counters + `URLResourceValues` |
+| Network | routing socket `NET_RT_IFLIST2` + `SCDynamicStore` |
+| อุณหภูมิ | `IOHIDEventSystemClient` (Apple Silicon) / SMC keys (Intel) |
+| พัดลม, กำลังไฟ | SMC ผ่าน `AppleSMC` user client |
+| Battery | `IOPowerSources` + `AppleSmartBattery` + SMC gas gauge |
+
+ไม่ต้องใช้สิทธิ์ root และไม่ต้องติดตั้ง daemon (ต่างจาก iStat Menus ที่รัน daemon เป็น root)
+
+---
+
+## โครงสร้างโค้ด
+
+```
+Sources/
+  CGaugeSMC/        C shim สำหรับ SMC — struct ต้องเป็น 80 ไบต์พอดี
+                    ซึ่ง Swift จัด layout ให้เป็น 76 (ดูคอมเมนต์ใน header)
+  GaugeKit/         ตัวอ่านค่าทั้งหมด + settings + weather provider
+    SMC.swift       ถอดรหัสค่า SMC (little-endian บน Apple Silicon)
+    Sensors.swift   IOHID + SMC, จัดกลุ่มและตั้งชื่อเซ็นเซอร์ให้อ่านรู้เรื่อง
+    CPU/Memory/Disk/Network/GPU/Battery/Processes.swift
+    Weather.swift   Open-Meteo + AccuWeather หลัง protocol เดียวกัน
+    MonitorHub.swift  timer เดียว sampling รอบเดียว แจกให้ทุก module
+  Gauge/            แอป AppKit + SwiftUI
+    Menubar/        วาด menu bar เป็น NSImage (text / graph / gauge / icon)
+    Panels/         dropdown ของแต่ละ module
+    Settings/       หน้าตั้งค่า
+  GaugeTests/       ชุดทดสอบ (executable — ดูหมายเหตุด้านล่าง)
+```
+
+---
+
+## หมายเหตุทางเทคนิค 3 ข้อ
+
+สามเรื่องนี้เกิดจากการ build ด้วย Command Line Tools อย่างเดียว บันทึกไว้กันลืม
+
+1. **`@State` ใช้ไม่ได้** — ใน SDK ของ macOS 26 ขึ้นไป `@State` เป็น macro ที่ต้องใช้ plugin
+   `SwiftUIMacros` ซึ่งมากับ Xcode เท่านั้น โค้ดจึงใช้ `UIState<Value>` (ObservableObject เล็ก ๆ)
+   คู่กับ `@StateObject` แทน — ได้ lifetime และ `Binding` เหมือนกันทุกประการ
+   (`@ObservedObject`, `@Binding`, `@StateObject`, `@Environment` ใช้ได้ปกติ)
+
+2. **ไม่มี XCTest** — มากับ Xcode เช่นกัน ชุดทดสอบจึงเป็น executable ที่มี harness ของตัวเอง
+   `swift run GaugeTests` คืน exit code 0 เมื่อผ่านหมด ปัจจุบัน 42 tests / 174 checks
+
+3. **SMC struct ต้องอยู่ใน C** — user client ของ SMC ต้องการ struct ขนาด 80 ไบต์เป๊ะ ๆ
+   แต่ Swift จัดให้เป็น 76 (มันยัด field ถัดไปลงใน tail padding ของ `SMCKeyInfoData`)
+   ทำให้ทุกคำขอถูกปฏิเสธเงียบ ๆ จึงต้องเก็บ struct ไว้ฝั่ง C
+
+> คอมเมนต์ในโค้ดเขียนเป็นภาษาอังกฤษตามธรรมเนียมของโปรเจกต์ Swift — ถ้าอยากให้แปลเป็นไทยบอกได้
+
+---
+
+## ที่ยังไม่ได้ทำ
+
+พูดตรง ๆ ว่ายังไม่เท่า iStat Menus ทุกจุด สิ่งที่ยังขาด:
+
+- **ควบคุมความเร็วพัดลม** — โค้ดอ่าน/เขียน SMC พร้อมแล้ว (`SMC.write`) แต่การเขียนคีย์ `F0Md`/`F0Tg`
+  ต้องมีสิทธิ์ที่แอปไม่มี ทำได้ต้องลง privileged helper เป็น root ซึ่งเป็นสิ่งที่ตั้งใจเลี่ยง
+- **Notifications** — ยังไม่มีระบบตั้งกฎแจ้งเตือน (เช่น CPU เกิน 90% นาน 1 นาที)
+- **บันทึกประวัติลงดิสก์** — history เก็บใน memory เท่านั้น ปิดแอปแล้วหาย
+- **ลากจัดลำดับ menu bar item** — มี field `order` รองรับแล้ว แต่ยังไม่มี UI ลากจัด
+- **Astronomy / ISS tracking** — ตัดออก เพราะเป็นของเล่นที่ไม่เกี่ยวกับการมอนิเตอร์ระบบ

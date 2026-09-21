@@ -21,6 +21,16 @@ struct GraphAppearanceEditor: View {
             }
             .font(.system(size: 11))
 
+            Picker("Graph", selection: Binding(
+                get: { look.shape },
+                set: { value in settings.setGraph(module) { $0.shape = value } }
+            )) {
+                ForEach(GraphShape.allCases.filter { $0.isAvailable(for: module) }, id: \.self) {
+                    Text($0.title).tag($0)
+                }
+            }
+            .frame(width: 300)
+
             Picker("Fill", selection: Binding(
                 get: { look.fade },
                 set: { value in settings.setGraph(module) { $0.fade = value } }
@@ -76,14 +86,15 @@ struct GraphAppearanceEditor: View {
     }
 
     private var preview: some View {
-        Sparkline(values: Self.sampleSeries,
-                  secondary: module == .network || module == .disks ? Self.secondarySeries : [],
-                  ceiling: 1,
-                  color: look.primary,
-                  secondaryColor: look.secondary,
-                  height: 54,
-                  appearance: look)
-            .frame(maxWidth: .infinity)
+        HistoryGraph(
+            plots: [Plot(values: Self.sampleSeries, color: look.primary),
+                    Plot(values: Self.secondarySeries, color: look.secondary)],
+            shape: look.shape,
+            ceiling: look.shape == .stacked ? 1.4 : 1,
+            height: 58,
+            appearance: look
+        )
+        .frame(maxWidth: .infinity)
     }
 
     private func colorBinding(_ keyPath: WritableKeyPath<GraphAppearance, String>) -> Binding<Color> {

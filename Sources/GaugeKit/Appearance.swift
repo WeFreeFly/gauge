@@ -21,11 +21,36 @@ public enum FadeStyle: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// The shape a history graph is drawn in.
+public enum GraphShape: String, Codable, CaseIterable, Sendable {
+    case area, line, columns, stacked, mirrored
+
+    public var title: String {
+        switch self {
+        case .area: "Area"
+        case .line: "Line"
+        case .columns: "Columns"
+        case .stacked: "Stacked"
+        case .mirrored: "Mirrored"
+        }
+    }
+
+    /// Stacking needs several series; mirroring needs exactly two.
+    public func isAvailable(for module: ModuleID) -> Bool {
+        switch self {
+        case .stacked: [.cpu, .memory].contains(module)
+        case .mirrored: [.network, .disks].contains(module)
+        default: true
+        }
+    }
+}
+
 /// Per-module graph colours. Stored as hex so the settings file stays readable
 /// and portable between machines.
 public struct GraphAppearance: Codable, Equatable, Sendable {
     public var primaryHex: String
     public var secondaryHex: String
+    public var shape: GraphShape
     public var fade: FadeStyle
     /// Opacity at the top of the fill, 0…1. The bottom is always clear for
     /// `.gradient` and this same value for `.flat`.
@@ -36,10 +61,12 @@ public struct GraphAppearance: Codable, Equatable, Sendable {
     public var usesLoadColor: Bool
 
     public init(primaryHex: String, secondaryHex: String = "#34C759",
+                shape: GraphShape = .area,
                 fade: FadeStyle = .gradient, fadeOpacity: Double = 0.45,
                 showsLine: Bool = true, usesLoadColor: Bool = false) {
         self.primaryHex = primaryHex
         self.secondaryHex = secondaryHex
+        self.shape = shape
         self.fade = fade
         self.fadeOpacity = fadeOpacity
         self.showsLine = showsLine
@@ -49,11 +76,13 @@ public struct GraphAppearance: Codable, Equatable, Sendable {
     /// Defaults picked to read clearly in both light and dark menu bars.
     public static func standard(for module: ModuleID) -> GraphAppearance {
         switch module {
-        case .cpu:      GraphAppearance(primaryHex: "#0A84FF", secondaryHex: "#30D158", usesLoadColor: true)
+        case .cpu:      GraphAppearance(primaryHex: "#0A84FF", secondaryHex: "#FF9F0A",
+                                        shape: .stacked, usesLoadColor: true)
         case .gpu:      GraphAppearance(primaryHex: "#BF5AF2", secondaryHex: "#0A84FF", usesLoadColor: true)
-        case .memory:   GraphAppearance(primaryHex: "#FF9F0A", secondaryHex: "#BF5AF2", usesLoadColor: true)
-        case .disks:    GraphAppearance(primaryHex: "#0A84FF", secondaryHex: "#BF5AF2")
-        case .network:  GraphAppearance(primaryHex: "#0A84FF", secondaryHex: "#30D158")
+        case .memory:   GraphAppearance(primaryHex: "#0A84FF", secondaryHex: "#FF9F0A",
+                                        shape: .stacked, usesLoadColor: true)
+        case .disks:    GraphAppearance(primaryHex: "#0A84FF", secondaryHex: "#BF5AF2", shape: .mirrored)
+        case .network:  GraphAppearance(primaryHex: "#0A84FF", secondaryHex: "#30D158", shape: .mirrored)
         case .sensors:  GraphAppearance(primaryHex: "#FF453A", secondaryHex: "#5AC8FA", usesLoadColor: true)
         case .battery:  GraphAppearance(primaryHex: "#30D158", secondaryHex: "#FF9F0A")
         case .time:     GraphAppearance(primaryHex: "#8E8E93", secondaryHex: "#8E8E93")

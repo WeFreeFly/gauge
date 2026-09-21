@@ -457,6 +457,18 @@ t.suite("Live collectors") {
         }
     }
 
+    t.test("no process is named after a bare version number") {
+        let monitor = ProcessMonitor()
+        _ = monitor.sample(limit: 20)
+        Thread.sleep(forTimeInterval: 0.3)
+        let sample = monitor.sample(limit: 20)
+        for process in sample.byCPU + sample.byMemory {
+            let versionish = !process.name.isEmpty
+                && process.name.allSatisfy { $0.isNumber || $0 == "." }
+            t.expect(!versionish, "\(process.name) (pid \(process.id)) reads as a version, not a name")
+        }
+    }
+
     t.test("process sampling produces named processes with sane usage") {
         let monitor = ProcessMonitor()
         _ = monitor.sample(limit: 5)

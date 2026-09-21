@@ -38,7 +38,8 @@ struct GaugeApp {
         // which is the only way to review the drawing without a screen.
         if let index = arguments.firstIndex(of: "--preview") {
             let directory = arguments.count > index + 1 ? arguments[index + 1] : "./preview"
-            PreviewRenderer.run(outputDirectory: directory)
+            PreviewRenderer.run(outputDirectory: directory,
+                                demo: arguments.contains("--demo"))
             return
         }
         // `--weather <place>` checks the provider end to end. It is the only

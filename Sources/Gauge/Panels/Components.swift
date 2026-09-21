@@ -318,13 +318,53 @@ struct CoreGrid: View {
 
 // MARK: - Process list
 
+/// Icons are looked up from disk, which is far too slow to do while scrolling,
+/// so each executable path is resolved once and kept.
+enum ProcessIconCache {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: NSImage] = [:]
+
+    static func icon(forExecutable path: String) -> NSImage? {
+        guard !path.isEmpty else { return nil }
+        lock.lock()
+        if let cached = cache[path] {
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+
+        // "/Applications/Foo.app/Contents/MacOS/Foo" → the bundle, which is
+        // what carries the icon; plain binaries fall back to their own.
+        var target = path
+        if let range = path.range(of: ".app/Contents/", options: .backwards) {
+            target = String(path[path.startIndex..<range.lowerBound]) + ".app"
+        }
+        let image = NSWorkspace.shared.icon(forFile: target)
+        image.size = NSSize(width: 16, height: 16)
+
+        lock.lock()
+        cache[path] = image
+        lock.unlock()
+        return image
+    }
+}
+
 struct ProcessList: View {
     let title: String
     let processes: [ProcessUsage]
     let showsMemory: Bool
+    var accent: Color = .secondary
+    /// Bar behind each row showing its share of the largest value, the way
+    /// iStat Menus ranks them.
+    var showsBars = true
+
+    private var peak: Double {
+        let values = processes.map { showsMemory ? $0.memory : $0.cpu }
+        return max(values.max() ?? 1, .leastNonzeroMagnitude)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 3) {
             SectionLabel(text: title)
             if processes.isEmpty {
                 Text("Collecting…")
@@ -332,19 +372,64 @@ struct ProcessList: View {
                     .foregroundStyle(.tertiary)
             }
             ForEach(processes) { process in
-                HStack(spacing: 8) {
-                    Text(process.name)
-                        .font(.system(size: 11))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 8)
-                    Text(showsMemory ? Format.bytes(process.memory)
-                                     : String(format: "%.1f%%", process.cpu * 100))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                ProcessRow(process: process, showsMemory: showsMemory,
+                           share: (showsMemory ? process.memory : process.cpu) / peak,
+                           accent: accent, showsBar: showsBars)
+            }
+        }
+    }
+}
+
+struct ProcessRow: View {
+    let process: ProcessUsage
+    let showsMemory: Bool
+    let share: Double
+    var accent: Color
+    var showsBar: Bool
+
+    @StateObject private var hovering = UIState(false)
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let icon = ProcessIconCache.icon(forExecutable: process.path) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 14, height: 14)
+            } else {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 14)
+            }
+            Text(process.name)
+                .font(.system(size: 11))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 8)
+            Text(showsMemory ? Format.bytes(process.memory)
+                             : String(format: "%.1f%%", process.cpu * 100))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(alignment: .leading) {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(hovering.value ? 0.07 : 0))
+                    if showsBar {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(accent.opacity(0.14))
+                            .frame(width: max(0, geometry.size.width * share.clamped(to: 0...1)))
+                    }
                 }
             }
         }
+        .padding(.horizontal, -5)
+        .contentShape(Rectangle())
+        .onHover { hovering.value = $0 }
+        .help(process.path.isEmpty ? process.name : process.path)
     }
 }
 

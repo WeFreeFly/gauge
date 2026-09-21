@@ -24,11 +24,31 @@
 
 แต่ละ module มี menu bar item ของตัวเอง เลือกรูปแบบแสดงผลได้ 5 แบบ: Text, Graph, Text + Graph, Gauge, Icon
 
-### หน้าตาและสี
+### กราฟและหน้าตา
 
-ปรับได้ที่ **Settings → Appearance** (หรือในหน้าของแต่ละ module)
+Layout เดินตามโครงเดียวกับ iStat Menus: แต่ละ dropdown คือ stack ของ **section** ที่มีหัวข้อ
+ค่าปัจจุบันชิดขวา กราฟเต็มความกว้าง แล้วต่อด้วย legend กับช่วงเวลา
+
+**ชนิดกราฟที่มี**
+
+| กราฟ | ใช้ที่ไหน |
+|---|---|
+| Stacked area | CPU (user/system), Memory (app/wired/compressed) |
+| Mirrored | Network (ดาวน์บน–อัปล่าง), Disk (read/write) |
+| Area / Line / Columns | เลือกได้ทุก module, Columns ใช้เป็นค่าเริ่มต้นของกราฟกำลังไฟ |
+| Ring gauge | GPU, พื้นที่ดิสก์, แบตเตอรี่, พัดลม, หน้า Combined |
+| Per-core grid | กราฟประวัติย่อยรายคอร์ (10 ช่องบน M5) แยกสี Super/Efficiency |
+| Heat strip | แถบสีไล่ตามอุณหภูมิ CPU ตามเวลา |
+| Segmented bar | สัดส่วนหน่วยความจำ ณ ปัจจุบัน |
+| Forecast band | ช่วงอุณหภูมิสูง–ต่ำ 7 วัน |
+| Hourly bars | โอกาสฝนรายชั่วโมง |
+
+รายการ process มีไอคอนแอปจริงและแถบจัดอันดับตามสัดส่วนการใช้งาน
+
+**ปรับได้ที่ Settings → Appearance** (หรือในหน้าของแต่ละ module)
 
 - **สีหลัก / สีรอง** ของกราฟแต่ละ module เลือกเองได้ผ่าน colour picker
+- **รูปแบบกราฟ** Area / Line / Columns / Stacked / Mirrored (เลือกได้เท่าที่ module นั้นรองรับ)
 - **รูปแบบ fade** 4 แบบ
   - `Fade to clear` — ไล่จากสีไปโปร่งใส (ค่าเริ่มต้น แบบเดียวกับ iStat Menus)
   - `Solid fill` — สีทึบระดับเดียว
@@ -40,6 +60,9 @@
 - **ไฮไลต์แถวตอนเอาเมาส์ชี้** เปิด/ปิดได้
 - **ความกว้างกราฟบน menu bar** 16–80 pt
 - มีตัวอย่างสดในหน้า settings เห็นผลทันทีก่อนกด
+
+ดูหน้าตาทุกแบบได้โดยไม่ต้องเปิดแอป: `Gauge --preview ./out --demo` จะ render ทุก panel
+ทุก menubar style ทั้งโหมดสว่างและมืดออกมาเป็น PNG (`--demo` ใส่ข้อมูลตัวอย่างให้กราฟมีรูปร่าง)
 
 ---
 
@@ -58,7 +81,7 @@ cp -R build/Gauge.app /Applications/   # ติดตั้งจริง
 ```bash
 swift run GaugeTests                       # ชุดทดสอบ
 build/Gauge.app/Contents/MacOS/Gauge --dump      # พิมพ์ค่าที่อ่านได้ทั้งหมดหนึ่งรอบ
-build/Gauge.app/Contents/MacOS/Gauge --preview ./out   # render menu bar + panel ทุกแบบเป็น PNG
+build/Gauge.app/Contents/MacOS/Gauge --preview ./out --demo  # render ทุก panel/menubar เป็น PNG
 build/Gauge.app/Contents/MacOS/Gauge --weather "Bangkok"  # ทดสอบ weather provider
 build/Gauge.app/Contents/MacOS/Gauge --bench       # จับเวลาการอ่านค่าแต่ละตัว
 build/Gauge.app/Contents/MacOS/Gauge --map-sensors # หาว่าเซ็นเซอร์ตัวไหนคือ CPU จริง (ใช้เวลา ~2 นาที)

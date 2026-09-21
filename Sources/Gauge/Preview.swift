@@ -8,7 +8,7 @@ import GaugeKit
 /// a running menu bar, which a build machine cannot do.
 @MainActor
 enum PreviewRenderer {
-    static func run(outputDirectory: String) {
+    static func run(outputDirectory: String, demo: Bool = false) {
         let directory = URL(fileURLWithPath: (outputDirectory as NSString).expandingTildeInPath)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
@@ -25,6 +25,12 @@ enum PreviewRenderer {
         RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         hub.sampleNow()
         RunLoop.current.run(until: Date().addingTimeInterval(1.5))
+        // Two samples make a straight line; a demo history shows the shapes.
+        if demo {
+            hub.injectDemoHistory()
+            hub.settings.weatherEnabled = true
+            hub.injectDemoWeather()
+        }
 
         let appearances = [
             ("light", NSAppearance(named: .aqua)!),

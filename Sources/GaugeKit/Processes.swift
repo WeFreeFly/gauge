@@ -110,6 +110,25 @@ public final class ProcessMonitor: @unchecked Sendable {
         !name.isEmpty && name.allSatisfy { $0.isNumber || $0 == "." }
     }
 
+    /// Directory names that describe layout rather than the program itself.
+    private static let genericDirectories: Set<String> = [
+        "versions", "version", "bin", "sbin", "libexec", "current", "releases",
+        "Contents", "MacOS", "Resources", "Frameworks", "Helpers", "share", "lib",
+    ]
+
+    private static func meaningfulAncestor(of path: String) -> String? {
+        var url = URL(fileURLWithPath: path).deletingLastPathComponent()
+        for _ in 0..<4 {
+            let component = url.lastPathComponent
+            if component.isEmpty || component == "/" { return nil }
+            if !genericDirectories.contains(component), !looksLikeVersion(component) {
+                return component
+            }
+            url.deleteLastPathComponent()
+        }
+        return nil
+    }
+
     private static func allPIDs() -> [pid_t]? {
         let byteCount = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
         guard byteCount > 0 else { return nil }
@@ -146,9 +165,12 @@ public final class ProcessMonitor: @unchecked Sendable {
             let bundle = String(path[path.startIndex..<range.lowerBound])
             name = (bundle as NSString).lastPathComponent
         }
-        // Some bundles nest under a version directory, which would leave the
-        // name reading "2.1.276".
-        if Self.looksLikeVersion(name) { name = executable }
+        // Some tools install their binary as the version number
+        // (".../claude/versions/2.1.276"), which on its own says nothing about
+        // what is running. Walk up to the first directory that names something.
+        if Self.looksLikeVersion(name) {
+            name = Self.meaningfulAncestor(of: path) ?? executable
+        }
         if name.isEmpty {
             var short = [CChar](repeating: 0, count: 256)
             if proc_name(pid, &short, 256) > 0 { name = String(cString: short) }

@@ -10,41 +10,35 @@ struct NetworkPanel: View {
     var body: some View {
         let network = hub.snapshot.network
         let look = settings.graph(.network)
+
         Panel {
             PanelHeader(title: "Network",
                         subtitle: network.interfaces.first(where: \.isPrimary)?.displayName,
                         symbol: "network")
 
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Label("Download", systemImage: "arrow.down")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                    Text(rate(network.downloadRate))
-                        .font(.system(size: 15, weight: .medium, design: .monospaced))
-                        .foregroundStyle(look.primary)
-                }
-                VStack(alignment: .leading, spacing: 1) {
-                    Label("Upload", systemImage: "arrow.up")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                    Text(rate(network.uploadRate))
-                        .font(.system(size: 15, weight: .medium, design: .monospaced))
-                        .foregroundStyle(look.secondary)
-                }
-                Spacer()
+            HStack(spacing: 0) {
+                readout("Download", rate(network.downloadRate), "arrow.down", look.primary)
+                readout("Upload", rate(network.uploadRate), "arrow.up", look.secondary)
             }
 
-            VStack(spacing: 3) {
-                Sparkline(values: hub.series.networkDown, secondary: hub.series.networkUp,
-                          color: look.primary, secondaryColor: look.secondary,
-                          height: 46, appearance: look)
-                GraphCaption(trailing: "peak \(rate(max(network.peakDownload, network.peakUpload)))   ")
+            GraphSection(title: "Bandwidth",
+                         value: "↓ \(rate(network.downloadRate))  ↑ \(rate(network.uploadRate))",
+                         legend: [("Down", look.primary), ("Up", look.secondary)],
+                         caption: "peak \(rate(max(network.peakDownload, network.peakUpload)))") {
+                HistoryGraph(
+                    plots: [Plot(values: hub.series.networkDown, color: look.primary),
+                            Plot(values: hub.series.networkUp, color: look.secondary)],
+                    shape: look.shape,
+                    height: 62,
+                    appearance: look
+                )
             }
 
-            VStack(spacing: 4) {
-                StatRow(label: "Peak down", value: rate(network.peakDownload))
-                StatRow(label: "Peak up", value: rate(network.peakUpload))
+            Divider()
+
+            VStack(spacing: 2) {
+                StatRow(label: "Peak down", value: rate(network.peakDownload), valueColor: look.primary)
+                StatRow(label: "Peak up", value: rate(network.peakUpload), valueColor: look.secondary)
                 StatRow(label: "This session",
                         value: "↓ \(Format.bytes(network.sessionIn))  ↑ \(Format.bytes(network.sessionOut))")
                 StatRow(label: "Since boot",
@@ -117,6 +111,19 @@ struct NetworkPanel: View {
         }
     }
 
+    private func readout(_ title: String, _ value: String,
+                         _ symbol: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 17, weight: .medium, design: .monospaced))
+                .foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func rate(_ value: Double) -> String {
         settings.networkUnitBits
             ? Format.rate(value * 8).replacingOccurrences(of: "B/s", with: "b/s")
@@ -134,62 +141,85 @@ struct SensorsPanel: View {
     var body: some View {
         let sensors = hub.snapshot.sensors
         let look = settings.graph(.sensors)
+
         Panel {
             PanelHeader(title: "Sensors",
                         subtitle: "\(sensors.readings.count) readings",
                         symbol: "thermometer.medium")
 
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .center, spacing: 14) {
                 if let soc = sensors.socTemperature {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("CPU die avg").font(.system(size: 10)).foregroundStyle(.secondary)
-                        Text(Format.temperature(soc, unit: settings.temperatureUnit, decimals: 1))
-                            .font(.system(size: 22, weight: .semibold, design: .rounded))
-                            .foregroundStyle(look.valueColor(load: ((soc - 35) / 55).clamped(to: 0...1)))
+                    RingGauge(fraction: ((soc - 30) / 70).clamped(to: 0...1),
+                              color: look.valueColor(load: ((soc - 35) / 55).clamped(to: 0...1)),
+                              label: Format.temperature(soc, unit: settings.temperatureUnit),
+                              caption: "CPU die")
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    if let peak = sensors.peakDieTemperature {
+                        StatRow(label: "Hottest die sensor",
+                                value: Format.temperature(peak, unit: settings.temperatureUnit, decimals: 1))
+                    }
+                    if let power = sensors.systemPower {
+                        StatRow(label: "System power", value: Format.power(power))
+                    }
+                    if let adapter = sensors.adapterPower {
+                        StatRow(label: "Adapter", value: Format.power(adapter))
+                    }
+                    if let storage = sensors.storageTemperature {
+                        StatRow(label: "SSD",
+                                value: Format.temperature(storage, unit: settings.temperatureUnit, decimals: 1))
                     }
                 }
-                if let peak = sensors.peakDieTemperature {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("peak").font(.system(size: 10)).foregroundStyle(.secondary)
-                        Text(Format.temperature(peak, unit: settings.temperatureUnit, decimals: 1))
-                            .font(.system(size: 16, weight: .medium, design: .monospaced))
-                    }
-                }
-                if let power = sensors.systemPower {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Power").font(.system(size: 10)).foregroundStyle(.secondary)
-                        Text(Format.power(power))
-                            .font(.system(size: 16, weight: .medium, design: .monospaced))
-                    }
-                }
-                Spacer()
             }
 
             if !hub.series.socTemperature.isEmpty {
-                VStack(spacing: 3) {
-                    Sparkline(values: hub.series.socTemperature, ceiling: 100, color: look.primary,
-                              secondaryColor: look.secondary, height: 40, appearance: look)
-                    GraphCaption(trailing: "0–100°C   ")
+                GraphSection(title: "CPU die temperature",
+                             value: sensors.socTemperature.map {
+                                Format.temperature($0, unit: settings.temperatureUnit, decimals: 1)
+                             },
+                             caption: "0–100 °C") {
+                    VStack(spacing: 3) {
+                        HistoryGraph(
+                            plots: [Plot(values: hub.series.socTemperature, color: look.primary)],
+                            shape: look.shape == .stacked || look.shape == .mirrored ? .area : look.shape,
+                            ceiling: 100, height: 46, appearance: look
+                        )
+                        HeatStrip(values: hub.series.socTemperature)
+                    }
+                }
+            }
+
+            if !hub.series.power.isEmpty {
+                GraphSection(title: "Power draw",
+                             value: sensors.systemPower.map(Format.power),
+                             caption: "peak \(Format.power(hub.series.power.max() ?? 0))") {
+                    HistoryGraph(
+                        plots: [Plot(values: hub.series.power, color: look.secondary)],
+                        shape: .columns,
+                        height: 32, appearance: look, gridLines: [0.5]
+                    )
                 }
             }
 
             if !sensors.fans.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    SectionLabel(text: "Fans")
+                Divider()
+                HStack(alignment: .top, spacing: 14) {
                     ForEach(sensors.fans) { fan in
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack {
-                                Text(fan.name).font(.system(size: 11))
-                                Spacer()
-                                Text("\(Int(fan.rpm)) rpm")
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            }
-                            BarMeter(fraction: fan.loadFraction, color: look.secondary)
-                            Text("\(Int(fan.minRPM))–\(Int(fan.maxRPM)) rpm")
-                                .font(.system(size: 9))
+                        VStack(spacing: 4) {
+                            RingGauge(fraction: fan.loadFraction,
+                                      color: look.secondary,
+                                      lineWidth: 5,
+                                      diameter: 50,
+                                      label: "\(Int(fan.rpm))",
+                                      caption: "rpm")
+                            Text(fan.name)
+                                .font(.system(size: 10, weight: .medium))
+                            Text("\(Int(fan.minRPM))–\(Int(fan.maxRPM))")
+                                .font(.system(size: 8))
                                 .foregroundStyle(.tertiary)
                         }
                     }
+                    Spacer(minLength: 0)
                 }
             }
 
@@ -198,7 +228,7 @@ struct SensorsPanel: View {
             VStack(alignment: .leading, spacing: 10) {
                 let groups = sensors.grouped.filter { $0.group != .fans }
                 ForEach(groups.prefix(expanded.value ? 99 : 3), id: \.group) { entry in
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 3) {
                         SectionLabel(text: entry.group.rawValue)
                         if expanded.value, let explanation = entry.group.explanation {
                             Text(explanation)
@@ -236,27 +266,35 @@ struct BatteryPanel: View {
 
     var body: some View {
         let battery = hub.snapshot.battery
+        let look = settings.graph(.battery)
+
         Panel {
             PanelHeader(title: "Battery", subtitle: statusLine(battery), symbol: "battery.75percent")
 
             if battery.isPresent {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("\(battery.chargePercent)%")
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(chargeColor(battery))
-                    Spacer()
-                    if let time = battery.isCharging ? battery.timeToFull : battery.timeToEmpty {
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text(battery.isCharging ? "until full" : "remaining")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                            Text(Format.duration(time))
-                                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                HStack(alignment: .center, spacing: 14) {
+                    RingGauge(fraction: battery.charge,
+                              color: chargeColor(battery),
+                              label: "\(battery.chargePercent)%",
+                              caption: battery.isCharging ? "charging" : "charge")
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let time = battery.isCharging ? battery.timeToFull : battery.timeToEmpty {
+                            StatRow(label: battery.isCharging ? "Until full" : "Remaining",
+                                    value: Format.duration(time))
+                        }
+                        if let health = battery.health {
+                            StatRow(label: "Health", value: Format.percent(health, decimals: 1),
+                                    valueColor: health < 0.8 ? .orange : .primary)
+                        }
+                        if let cycles = battery.cycleCount {
+                            StatRow(label: "Cycles",
+                                    value: battery.designCycleCount.map { "\(cycles) of \($0)" } ?? "\(cycles)")
+                        }
+                        if let drain = battery.drainWatts {
+                            StatRow(label: "Drain", value: Format.power(drain), valueColor: .orange)
                         }
                     }
                 }
-
-                BarMeter(fraction: battery.charge, color: chargeColor(battery), height: 7)
 
                 if battery.isOptimizedChargingPaused {
                     Text("Charging is paused by battery health management.")
@@ -264,16 +302,20 @@ struct BatteryPanel: View {
                         .foregroundStyle(.tertiary)
                 }
 
-                VStack(spacing: 4) {
-                    if let health = battery.health {
-                        StatRow(label: "Health", value: Format.percent(health, decimals: 1),
-                                valueColor: health < 0.8 ? .orange : .primary)
+                if hub.series.batteryCharge.count > 1 {
+                    GraphSection(title: "Charge",
+                                 value: "\(battery.chargePercent)%") {
+                        HistoryGraph(
+                            plots: [Plot(values: hub.series.batteryCharge, color: look.primary)],
+                            shape: look.shape == .stacked || look.shape == .mirrored ? .area : look.shape,
+                            ceiling: 1, height: 40, appearance: look
+                        )
                     }
-                    if let cycles = battery.cycleCount {
-                        let designCycles = battery.designCycleCount
-                        StatRow(label: "Cycles",
-                                value: designCycles.map { "\(cycles) of \($0)" } ?? "\(cycles)")
-                    }
+                }
+
+                Divider()
+
+                VStack(spacing: 2) {
                     if let condition = battery.condition {
                         StatRow(label: "Condition", value: condition, monospaced: false)
                     }
@@ -295,9 +337,6 @@ struct BatteryPanel: View {
                     }
                     if let adapter = battery.adapterWatts {
                         StatRow(label: "Adapter", value: Format.power(adapter))
-                    }
-                    if let drain = battery.drainWatts {
-                        StatRow(label: "Drain", value: Format.power(drain), valueColor: .orange)
                     }
                 }
             } else {
@@ -338,7 +377,7 @@ struct TimePanel: View {
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Panel(width: 280) {
+        Panel(width: 290) {
             PanelHeader(title: "Time", subtitle: TimeZone.current.identifier, symbol: "clock")
 
             Text(clock.value, format: .dateTime.weekday(.wide).day().month(.wide).year())
@@ -346,12 +385,12 @@ struct TimePanel: View {
                 .foregroundStyle(.secondary)
 
             Text(localTime(clock.value, zone: .current))
-                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .font(.system(size: 32, weight: .semibold, design: .rounded))
                 .monospacedDigit()
 
             if settings.timeZones.count > 1 {
                 Divider()
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     SectionLabel(text: "World clocks")
                     ForEach(settings.timeZones.filter { $0 != TimeZone.current.identifier }, id: \.self) { identifier in
                         if let zone = TimeZone(identifier: identifier) {
@@ -373,6 +412,7 @@ struct TimePanel: View {
                 }
             }
 
+            Divider()
             StatRow(label: "Uptime", value: Format.duration(hub.snapshot.cpu.uptime))
 
             PanelFooter(onSettings: { SettingsWindowController.shared.show(hub: hub, selecting: .time) })
@@ -402,30 +442,48 @@ struct CombinedPanel: View {
 
     var body: some View {
         let snapshot = hub.snapshot
-        Panel(width: 320) {
+
+        Panel(width: 330) {
             PanelHeader(title: hub.hardware.modelIdentifier,
                         subtitle: "\(hub.hardware.chip) · macOS \(hub.hardware.osVersion)",
                         symbol: "square.grid.2x2")
 
-            HStack(spacing: 10) {
-                summaryTile("CPU", Format.percent(snapshot.cpu.total),
-                            settings.graph(.cpu), snapshot.cpu.total, hub.series.cpu)
-                summaryTile("Memory", Format.percent(snapshot.memory.usedFraction),
-                            settings.graph(.memory), snapshot.memory.pressureFraction, hub.series.memory)
-                summaryTile("GPU", Format.percent(snapshot.gpu.utilization),
-                            settings.graph(.gpu), snapshot.gpu.utilization, hub.series.gpu)
+            HStack(spacing: 6) {
+                ring("CPU", snapshot.cpu.total, settings.graph(.cpu))
+                ring("Memory", snapshot.memory.usedFraction, settings.graph(.memory),
+                     load: snapshot.memory.pressureFraction)
+                ring("GPU", snapshot.gpu.utilization, settings.graph(.gpu))
+                if snapshot.battery.isPresent {
+                    ring("Battery", snapshot.battery.charge, settings.graph(.battery), load: 0)
+                }
             }
 
-            VStack(spacing: 4) {
-                StatRow(label: "Network",
-                        value: "↓ \(Format.rate(snapshot.network.downloadRate))  ↑ \(Format.rate(snapshot.network.uploadRate))")
+            GraphSection(title: "CPU",
+                         value: Format.percent(snapshot.cpu.total)) {
+                HistoryGraph(plots: [Plot(values: hub.series.cpu, color: settings.graph(.cpu).primary)],
+                             shape: .area, ceiling: 1, height: 34,
+                             appearance: settings.graph(.cpu), gridLines: [0.5])
+            }
+
+            GraphSection(title: "Network",
+                         value: "↓ \(Format.rate(snapshot.network.downloadRate))  ↑ \(Format.rate(snapshot.network.uploadRate))",
+                         legend: [("Down", settings.graph(.network).primary),
+                                  ("Up", settings.graph(.network).secondary)]) {
+                HistoryGraph(plots: [Plot(values: hub.series.networkDown, color: settings.graph(.network).primary),
+                                     Plot(values: hub.series.networkUp, color: settings.graph(.network).secondary)],
+                             shape: .mirrored, height: 40, appearance: settings.graph(.network))
+            }
+
+            Divider()
+
+            VStack(spacing: 2) {
                 StatRow(label: "Disk",
                         value: "R \(Format.rate(snapshot.disk.activity.readRate))  W \(Format.rate(snapshot.disk.activity.writeRate))")
                 if let volume = snapshot.disk.bootVolume {
                     StatRow(label: volume.name, value: "\(Format.bytes(volume.free)) free")
                 }
                 if let temperature = snapshot.sensors.socTemperature {
-                    StatRow(label: "SoC temperature",
+                    StatRow(label: "CPU die",
                             value: Format.temperature(temperature, unit: settings.temperatureUnit, decimals: 1))
                 }
                 if let fan = snapshot.sensors.fans.first {
@@ -434,32 +492,30 @@ struct CombinedPanel: View {
                 if let power = snapshot.sensors.systemPower {
                     StatRow(label: "System power", value: Format.power(power))
                 }
-                if snapshot.battery.isPresent {
-                    StatRow(label: "Battery",
-                            value: "\(snapshot.battery.chargePercent)%" +
-                                   (snapshot.battery.isCharging ? " charging" : ""))
-                }
+                StatRow(label: "Processes", value: "\(snapshot.cpu.processCount)")
                 StatRow(label: "Uptime", value: Format.duration(snapshot.cpu.uptime))
             }
 
             Divider()
-            ProcessList(title: "Top by CPU", processes: Array(snapshot.topByCPU.prefix(5)), showsMemory: false)
+            ProcessList(title: "Top by CPU", processes: Array(snapshot.topByCPU.prefix(5)),
+                        showsMemory: false, accent: settings.graph(.cpu).primary)
 
             PanelFooter(onSettings: { SettingsWindowController.shared.show(hub: hub, selecting: nil) })
         }
     }
 
-    private func summaryTile(_ title: String, _ value: String, _ look: GraphAppearance,
-                             _ load: Double, _ series: [Double]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
-            Text(value)
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .foregroundStyle(look.valueColor(load: load))
-            Sparkline(values: series, ceiling: 1, color: look.primary,
-                      secondaryColor: look.secondary, height: 22,
-                      showsBaseline: false, appearance: look)
+    private func ring(_ title: String, _ fraction: Double,
+                      _ look: GraphAppearance, load: Double? = nil) -> some View {
+        VStack(spacing: 3) {
+            RingGauge(fraction: fraction,
+                      color: look.valueColor(load: load ?? fraction),
+                      lineWidth: 5,
+                      diameter: 54,
+                      label: Format.percent(fraction))
+            Text(title)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.tertiary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 }

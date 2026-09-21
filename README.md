@@ -68,12 +68,15 @@ open package/
 | **`Gauge-1.0.dmg`** | Drag Gauge onto the Applications shortcut beside it |
 | **`Gauge-1.0.pkg`** | Double-click and follow the installer |
 
-### Signing
+Both are signed with a Developer ID and notarised by Apple, so they open
+normally — no right-click, no warning.
 
-If a **Developer ID Application** certificate is installed, `build.sh` finds
-it and signs with the hardened runtime; `package.sh` signs the installer with
+### Signing and notarisation
+
+`build.sh` finds a **Developer ID Application** certificate and signs with the
+hardened runtime and a secure timestamp. `package.sh` signs the installer with
 a **Developer ID Installer** certificate and, given a notarytool profile,
-notarises and staples both files:
+notarises and staples three things: the app, the disk image and the package.
 
 ```bash
 xcrun notarytool store-credentials gauge \
@@ -82,13 +85,20 @@ xcrun notarytool store-credentials gauge \
 GAUGE_NOTARY_PROFILE=gauge ./Scripts/package.sh
 ```
 
-Gauge declares **no entitlements** and needs no capabilities, so nothing has
-to be registered beyond the certificates themselves.
+The app is notarised before it goes into either container. Stapling only the
+disk image is enough while the Mac can reach Apple; a ticket on the app itself
+travels with it once it is dragged to Applications, so a first launch works
+with no network at all.
 
-Without a certificate the build falls back to an ad-hoc signature, which runs
-fine locally but makes macOS refuse the first double-click on another Mac.
-Right-click (or Control-click) Gauge in Applications, choose **Open**, and
-confirm; macOS remembers. If it still refuses:
+Gauge declares **no entitlements** and needs no capabilities, so nothing has
+to be registered beyond the two certificates. Apple's Developer ID
+intermediate is not shipped with macOS — without it a correctly issued
+certificate imports and then reports `CSSMERR_TP_NOT_TRUSTED`, which reads
+like a mismatched key and is not one.
+
+Without a certificate the build falls back to an ad-hoc signature. That runs
+fine locally, but on another Mac the first launch needs a right-click →
+**Open**, or:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Gauge.app

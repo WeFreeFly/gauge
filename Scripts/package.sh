@@ -64,6 +64,36 @@ mkdir -p "$OUTPUT_DIR"
 
 [ -d "$APP" ] || { echo "✗ No app at $APP"; exit 1; }
 
+# Notarise and staple the app itself, before it goes into anything.
+#
+# Stapling the disk image is enough for Gatekeeper when the Mac can reach
+# Apple. A ticket on the app travels with it once it is dragged out of the
+# image, so a first launch works with no network at all.
+notarise_app() {
+  [ -n "$NOTARY_PROFILE" ] || return 0
+  if xcrun stapler validate "$APP" >/dev/null 2>&1; then
+    echo "▸ App already carries a notarisation ticket"
+    return 0
+  fi
+
+  echo "▸ Notarising the app…"
+  local zip
+  zip="$(mktemp -d)/Gauge.zip"
+  # ditto keeps the bundle's symlinks and metadata; zip(1) does not.
+  ditto -c -k --keepParent "$APP" "$zip"
+  if xcrun notarytool submit "$zip" --keychain-profile "$NOTARY_PROFILE" \
+       --wait --timeout 30m 2>&1 | sed 's/^/    /'; then
+    xcrun stapler staple "$APP" >/dev/null 2>&1 \
+      && echo "  ✓ notarised and stapled" \
+      || echo "  ✗ could not staple the app"
+  else
+    echo "  ✗ notarisation failed; continuing with the containers"
+  fi
+  rm -rf "$(dirname "$zip")"
+}
+
+notarise_app
+
 # ---------------------------------------------------------------- disk image
 
 make_dmg() {

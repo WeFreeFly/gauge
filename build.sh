@@ -51,7 +51,7 @@ if [ -z "$IDENTITY" ]; then
 fi
 
 if [ -n "$IDENTITY" ]; then
-  echo "▸ Signing as $IDENTITY…"
+  echo "▸ Signing as ${IDENTITY}…"
   # The hardened runtime is required before Apple will notarise anything.
   codesign --force --deep --options runtime --timestamp \
            --sign "$IDENTITY" "$APP_DIR"

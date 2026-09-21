@@ -40,6 +40,12 @@ IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
 # Create the profile once with:
 #   xcrun notarytool store-credentials gauge --apple-id you@example.com \
 #         --team-id TEAMID --password <app-specific-password>
+APP_IDENTITY="${GAUGE_SIGN_IDENTITY:-}"
+if [ -z "$APP_IDENTITY" ]; then
+  APP_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+    | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)"
+fi
+
 INSTALLER_IDENTITY="${GAUGE_INSTALLER_IDENTITY:-}"
 if [ -z "$INSTALLER_IDENTITY" ]; then
   INSTALLER_IDENTITY="$(security find-identity -v 2>/dev/null \
@@ -114,6 +120,13 @@ TXT
                  -fs HFS+ \
                  -format UDZO -imagekey zlib-level=9 \
                  -quiet "$dmg"
+  # Apple recommends signing the image as well as its contents; it also lets
+  # the signature be checked before the image is opened.
+  if [ -n "$APP_IDENTITY" ]; then
+    codesign --force --sign "$APP_IDENTITY" --timestamp "$dmg" 2>/dev/null \
+      || echo "  ✗ could not sign the disk image"
+  fi
+
   notarise "$dmg" "disk image"
   verify_dmg "$dmg"
   echo "✓ $dmg  ($(du -h "$dmg" | cut -f1))"
@@ -306,7 +319,7 @@ XML
 
   # An installer package is signed with its own kind of certificate.
   if [ -n "$INSTALLER_IDENTITY" ]; then
-    echo "  signing with $INSTALLER_IDENTITY…"
+    echo "  signing with ${INSTALLER_IDENTITY}…"
     local signed="${pkg%.pkg}-signed.pkg"
     if productsign --sign "$INSTALLER_IDENTITY" --timestamp "$pkg" "$signed" 2>/dev/null; then
       mv "$signed" "$pkg"
@@ -316,7 +329,14 @@ XML
     fi
   fi
 
-  notarise "$pkg" "package"
+  # Apple will not notarise a package that is not signed with a Developer ID
+  # Installer certificate, so saying why beats a rejection from the service.
+  if [ -n "$NOTARY_PROFILE" ] && [ -z "$INSTALLER_IDENTITY" ]; then
+    echo "  skipping notarisation: a package needs a Developer ID Installer"
+    echo "    certificate, and none is installed. The disk image does not."
+  else
+    notarise "$pkg" "package"
+  fi
   verify_pkg "$pkg"
   echo "✓ $pkg  ($(du -h "$pkg" | cut -f1))"
 }
@@ -331,9 +351,14 @@ esac
 echo
 if [ -n "$NOTARY_PROFILE" ]; then
   echo "Signed and notarised — these open on any Mac without a right-click."
-elif [ -n "$INSTALLER_IDENTITY" ] || [ -n "${GAUGE_SIGN_IDENTITY:-}" ]; then
-  echo "Signed, but not notarised. Set GAUGE_NOTARY_PROFILE to finish the job;"
-  echo "Gatekeeper still warns on a signed build that Apple has not seen."
+elif [ -n "$APP_IDENTITY" ] || [ -n "$INSTALLER_IDENTITY" ]; then
+  echo "Signed with:"
+  [ -n "$APP_IDENTITY" ]       && echo "  app       $APP_IDENTITY"
+  [ -n "$INSTALLER_IDENTITY" ] && echo "  installer $INSTALLER_IDENTITY"
+  echo
+  echo "Not notarised yet — Gatekeeper still refuses a signed build Apple has"
+  echo "not seen. Finish with:"
+  echo "  GAUGE_NOTARY_PROFILE=<profile> ./Scripts/package.sh"
 else
   echo "Not signed with a Developer ID, so the first launch needs"
   echo "right-click → Open. Install a Developer ID Application certificate"

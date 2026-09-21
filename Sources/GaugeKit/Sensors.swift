@@ -8,6 +8,10 @@ public enum SensorKind: String, Codable, Sendable, CaseIterable {
 
 public enum SensorGroup: String, Codable, Sendable, CaseIterable {
     case cpu = "CPU Die"
+    /// Populated once a calibration has shown which sensors follow which
+    /// cluster. The headings are replaced with the cluster's real name.
+    case cpuPerformance = "CPU Performance Cores"
+    case cpuEfficiency = "CPU Efficiency Cores"
     case package = "Package"
     case memory = "Memory"
     case storage = "Storage"
@@ -19,8 +23,9 @@ public enum SensorGroup: String, Codable, Sendable, CaseIterable {
 
     public var sortOrder: Int {
         switch self {
-        case .cpu: 0; case .memory: 1; case .storage: 2; case .battery: 3
-        case .power: 4; case .fans: 5; case .package: 6; case .board: 7; case .other: 8
+        case .cpuPerformance: 0; case .cpuEfficiency: 1; case .cpu: 2
+        case .memory: 3; case .storage: 4; case .battery: 5
+        case .power: 6; case .fans: 7; case .package: 8; case .board: 9; case .other: 10
         }
     }
 
@@ -29,7 +34,11 @@ public enum SensorGroup: String, Codable, Sendable, CaseIterable {
     public var explanation: String? {
         switch self {
         case .cpu:
-            "Thermal sensors spread across the compute die. They all track CPU load; Apple does not publish which one sits over which core."
+            "Thermal sensors spread across the compute die. They all track CPU load; Apple does not publish which one sits over which core. Calibrate in Settings → Sensors to sort them by cluster."
+        case .cpuPerformance:
+            "Measured to warm more when the fast cluster is loaded, so these sit over or near it."
+        case .cpuEfficiency:
+            "Measured to warm more when the efficient cluster is loaded."
         case .package:
             "Elsewhere in the package. These barely move under CPU load."
         case .board:
@@ -43,6 +52,9 @@ public enum SensorGroup: String, Codable, Sendable, CaseIterable {
 public struct SensorReading: Identifiable, Sendable, Hashable {
     public let id: String
     public let name: String
+    /// The name the hardware reports, e.g. "PMU tdie5". Calibration results are
+    /// keyed by this, not by the readable name.
+    public let rawName: String
     public let group: SensorGroup
     public let kind: SensorKind
     public let value: Double
@@ -52,10 +64,11 @@ public struct SensorReading: Identifiable, Sendable, Hashable {
     /// numeric-aware name comparison so "Die 10" lands after "Die 2".
     public let order: Int
 
-    public init(id: String, name: String, group: SensorGroup, kind: SensorKind,
-                value: Double, range: ClosedRange<Double>? = nil, order: Int = 0) {
+    public init(id: String, name: String, rawName: String? = nil, group: SensorGroup,
+                kind: SensorKind, value: Double, range: ClosedRange<Double>? = nil, order: Int = 0) {
         self.id = id
         self.name = name
+        self.rawName = rawName ?? name
         self.group = group
         self.kind = kind
         self.value = value
@@ -106,6 +119,9 @@ public struct SensorSnapshot: Sendable {
     public var socTemperature: Double?
     /// The hottest single die sensor. Throttling follows the peak, not the mean.
     public var peakDieTemperature: Double?
+    /// Averages over the sensors a calibration attributed to each cluster.
+    public var performanceClusterTemperature: Double?
+    public var efficiencyClusterTemperature: Double?
     public var storageTemperature: Double?
     public var batteryTemperature: Double?
     /// Total system power draw in watts, from the SMC's own rail accounting.
@@ -219,6 +235,12 @@ public final class SensorMonitor: @unchecked Sendable {
     private var cached: SensorSnapshot?
     private var cachedAt: Date?
 
+    /// When set, die sensors are grouped and labelled by the cluster they were
+    /// measured to follow instead of by a bare number.
+    public var calibration: SensorCalibration? {
+        didSet { cached = nil }
+    }
+
     /// Reading every sensor is the single most expensive thing the app does.
     /// Temperatures move slowly, so a background pass every few seconds is
     /// indistinguishable from one per tick; a visible panel gets live data.
@@ -252,19 +274,60 @@ public final class SensorMonitor: @unchecked Sendable {
             ? (hid?.read { $0.contains("tdie") } ?? [])
             : (hid?.readAll() ?? [])
 
+        var performanceTemps: [Double] = []
+        var efficiencyTemps: [Double] = []
+
         for (name, celsius) in readings {
             // A calibration reference, not a measurement of anything.
             if name.hasSuffix("tcal") { continue }
 
-            let group = Self.group(forSensorNamed: name)
-            let display = Self.displayName(forSensorNamed: name)
-            snapshot.readings.append(SensorReading(id: "hid.\(name)", name: display,
+            var group = Self.group(forSensorNamed: name)
+            var display = Self.displayName(forSensorNamed: name)
+
+            // A calibration turns "CPU Die 6" into "Super Core Area 6".
+            if group == .cpu, let affinity = calibration?.affinity(for: name),
+               let calibration {
+                switch affinity {
+                case .performance:
+                    group = .cpuPerformance
+                    display = "\(calibration.performanceClusterName) Core Area \(Self.sensorNumber(name))"
+                case .efficiency:
+                    group = .cpuEfficiency
+                    display = "\(calibration.efficiencyClusterName) Core Area \(Self.sensorNumber(name))"
+                case .shared:
+                    display = "Shared Die \(Self.sensorNumber(name))"
+                case .unrelated:
+                    break
+                }
+            }
+
+            snapshot.readings.append(SensorReading(id: "hid.\(name)", name: display, rawName: name,
                                                    group: group, kind: .temperature, value: celsius,
                                                    order: Self.order(forSensorNamed: name)))
 
-            if group == .cpu { socDieTemps.append(celsius) }
-            if group == .battery { batteryTemps.append(celsius) }
-            if group == .storage { snapshot.storageTemperature = max(snapshot.storageTemperature ?? 0, celsius) }
+            switch group {
+            case .cpu:
+                socDieTemps.append(celsius)
+            case .cpuPerformance:
+                socDieTemps.append(celsius)
+                performanceTemps.append(celsius)
+            case .cpuEfficiency:
+                socDieTemps.append(celsius)
+                efficiencyTemps.append(celsius)
+            case .battery:
+                batteryTemps.append(celsius)
+            case .storage:
+                snapshot.storageTemperature = max(snapshot.storageTemperature ?? 0, celsius)
+            default:
+                break
+            }
+        }
+
+        if !performanceTemps.isEmpty {
+            snapshot.performanceClusterTemperature = performanceTemps.reduce(0, +) / Double(performanceTemps.count)
+        }
+        if !efficiencyTemps.isEmpty {
+            snapshot.efficiencyClusterTemperature = efficiencyTemps.reduce(0, +) / Double(efficiencyTemps.count)
         }
 
         if !socDieTemps.isEmpty {
@@ -397,6 +460,12 @@ public final class SensorMonitor: @unchecked Sendable {
         if lower.contains("pmu2") { order += 100 }
         if lower.contains("tdev") { order += 10 }
         return order
+    }
+
+    /// The trailing digits of a sensor name, used to keep numbering stable
+    /// when the label changes.
+    public static func sensorNumber(_ name: String) -> String {
+        String(name.reversed().prefix { $0.isNumber }.reversed())
     }
 
     public static func displayName(forSensorNamed name: String) -> String {

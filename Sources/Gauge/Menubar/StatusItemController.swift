@@ -5,11 +5,11 @@ import GaugeKit
 
 /// Owns one NSStatusItem per enabled module and keeps them in step with the hub.
 @MainActor
-final class StatusItemController: NSObject, NSPopoverDelegate {
+final class StatusItemController: NSObject {
     private let hub: MonitorHub
     private let settings: GaugeSettings
     private var items: [ModuleID: NSStatusItem] = [:]
-    private var popovers: [ModuleID: NSPopover] = [:]
+    private var panels: [ModuleID: PanelWindow] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var lastRenderedWidth: [ModuleID: CGFloat] = [:]
     private var lastSignature: [ModuleID: String] = [:]
@@ -20,13 +20,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         super.init()
     }
 
-    /// A transient popover can close on its own, so the flag has to be cleared
-    /// here rather than only where it is opened.
-    nonisolated func popoverDidClose(_ notification: Notification) {
-        Task { @MainActor in
-            if !self.popovers.values.contains(where: \.isShown) { self.hub.isShowingDetail = false }
-        }
-    }
+
 
     func start() {
         rebuildItems()
@@ -48,6 +42,18 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.refreshAll(force: true) }
+            .store(in: &cancellables)
+
+        // The dropdown's material is baked into its view tree.
+        settings.$panel
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                for (module, panel) in self.panels {
+                    panel.update(content: self.rootView(for: module))
+                }
+            }
             .store(in: &cancellables)
 
         // Redraw on every sampling pass.
@@ -83,7 +89,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         for (module, item) in items where !enabled.contains(module) {
             NSStatusBar.system.removeStatusItem(item)
             items[module] = nil
-            popovers[module] = nil
+            panels[module]?.close()
+            panels[module] = nil
             lastRenderedWidth[module] = nil
             lastSignature[module] = nil
         }
@@ -154,35 +161,41 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private func togglePopover(for module: ModuleID, from button: NSStatusBarButton) {
         // Close any other module's panel first; two open at once is noise.
-        for (other, popover) in popovers where other != module && popover.isShown {
-            popover.performClose(nil)
+        for (other, panel) in panels where other != module && panel.isShown {
+            panel.close()
         }
 
-        let popover = popovers[module] ?? makePopover(for: module)
-        popovers[module] = popover
-
-        if popover.isShown {
-            popover.performClose(nil)
-            hub.isShowingDetail = false
-        } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
-            hub.isShowingDetail = true
+        if let existing = panels[module] {
+            if existing.isShown {
+                existing.close()
+                return
+            }
+            // The click that got here is the one that dismissed the panel.
+            if existing.isClosingFromClick { return }
         }
+
+        let panel = panels[module] ?? makePanel(for: module)
+        panels[module] = panel
+        panel.update(content: rootView(for: module))
+        panel.show(below: button)
+        hub.isShowingDetail = true
     }
 
-    private func makePopover(for module: ModuleID) -> NSPopover {
-        let popover = NSPopover()
-        popover.behavior = .transient
-        popover.animates = false
-        popover.delegate = self
-        let root = ModulePanelView(module: module)
-            .environmentObject(hub)
-            .environmentObject(settings)
-        let controller = NSHostingController(rootView: root)
-        controller.sizingOptions = [.preferredContentSize]
-        popover.contentViewController = controller
-        return popover
+    private func rootView(for module: ModuleID) -> AnyView {
+        AnyView(
+            ModulePanelView(module: module)
+                .environmentObject(hub)
+                .environmentObject(settings)
+        )
+    }
+
+    private func makePanel(for module: ModuleID) -> PanelWindow {
+        let panel = PanelWindow(content: rootView(for: module))
+        panel.onClose = { [weak self] in
+            guard let self else { return }
+            if !self.panels.values.contains(where: \.isShown) { self.hub.isShowingDetail = false }
+        }
+        return panel
     }
 
     private func showContextMenu(for module: ModuleID, from button: NSStatusBarButton) {

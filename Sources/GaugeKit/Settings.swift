@@ -131,9 +131,12 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
 
     // Appearance
     @Published public var graphs: [ModuleID: GraphAppearance] { didSet { scheduleSave() } }
-    @Published public var panelMaterial: PanelMaterial { didSet { scheduleSave() } }
+    @Published public var panel: PanelAppearance { didSet { scheduleSave() } }
     @Published public var menubarGraphWidth: Double { didSet { scheduleSave() } }
     @Published public var highlightRowsOnHover: Bool { didSet { scheduleSave() } }
+
+    /// Result of the last sensor calibration, if one has been run on this Mac.
+    @Published public var sensorCalibration: SensorCalibration? { didSet { scheduleSave() } }
 
     @Published public var timeZones: [String] { didSet { scheduleSave() } }
     @Published public var timeFormat: String { didSet { scheduleSave() } }
@@ -157,9 +160,11 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         var weatherRefreshMinutes: Int?
         var weatherUsesDeviceLocation: Bool?
         var graphs: [String: GraphAppearance]?
-        var panelMaterial: PanelMaterial?
+        var panel: PanelAppearance?
+        var panelMaterial: PanelMaterial?      // pre-glass setting, migrated below
         var menubarGraphWidth: Double?
         var highlightRowsOnHover: Bool?
+        var sensorCalibration: SensorCalibration?
         var timeZones: [String]?
         var timeFormat: String?
         var launchAtLogin: Bool?
@@ -201,9 +206,20 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
             graphs[module] = stored?.graphs?[module.rawValue] ?? .standard(for: module)
         }
         self.graphs = graphs
-        panelMaterial = stored?.panelMaterial ?? .vibrant
+        // Earlier builds stored only a material; carry it forward.
+        if let saved = stored?.panel {
+            panel = saved
+        } else if let legacy = stored?.panelMaterial {
+            panel = PanelAppearance(material: legacy)
+        } else {
+            panel = .standard
+        }
         menubarGraphWidth = stored?.menubarGraphWidth ?? 32
         highlightRowsOnHover = stored?.highlightRowsOnHover ?? true
+
+        // A calibration measured on a different machine means nothing here.
+        let model = sysctlString("hw.model") ?? "Mac"
+        sensorCalibration = stored?.sensorCalibration.flatMap { $0.applies(to: model) ? $0 : nil }
 
         timeZones = stored?.timeZones ?? [TimeZone.current.identifier]
         timeFormat = stored?.timeFormat ?? "HH:mm"
@@ -289,9 +305,11 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
             weatherRefreshMinutes: weatherRefreshMinutes,
             weatherUsesDeviceLocation: weatherUsesDeviceLocation,
             graphs: Dictionary(uniqueKeysWithValues: graphs.map { ($0.key.rawValue, $0.value) }),
-            panelMaterial: panelMaterial,
+            panel: panel,
+            panelMaterial: nil,
             menubarGraphWidth: menubarGraphWidth,
             highlightRowsOnHover: highlightRowsOnHover,
+            sensorCalibration: sensorCalibration,
             timeZones: timeZones,
             timeFormat: timeFormat,
             launchAtLogin: launchAtLogin

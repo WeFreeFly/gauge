@@ -212,8 +212,56 @@ struct NetworkSettings: View {
 
 struct SensorSettings: View {
     @EnvironmentObject private var hub: MonitorHub
+    @EnvironmentObject private var settings: GaugeSettings
 
     var body: some View {
+        SettingsGroup("Which sensors are the CPU?") {
+            Text("Apple does not document what a sensor named \"PMU tdie7\" measures. "
+               + "Gauge can find out by loading one core cluster at a time and watching "
+               + "where the heat appears: a sensor over the fast cluster warms further "
+               + "when that cluster is busy.")
+                .settingsFootnote()
+
+            if let progress = hub.calibrationProgress {
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: progress.fraction)
+                        .frame(width: 320)
+                    HStack {
+                        Text(progress.stage).font(.system(size: 11))
+                        Spacer()
+                        Text("\(Int(progress.fraction * 100))%")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                        Button("Cancel") { hub.cancelCalibration() }
+                            .controlSize(.small)
+                    }
+                    .frame(width: 320)
+                    Text("The machine is deliberately busy while this runs.")
+                        .settingsFootnote()
+                }
+            } else if let calibration = settings.sensorCalibration {
+                HStack {
+                    Label("Calibrated \(calibration.measuredAt.formatted(date: .abbreviated, time: .shortened))",
+                          systemImage: "checkmark.seal")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.green)
+                    Spacer()
+                    Button("Run again") { hub.calibrateSensors() }
+                        .controlSize(.small)
+                    Button("Clear") { hub.clearCalibration() }
+                        .controlSize(.small)
+                }
+
+                CalibrationResults(calibration: calibration)
+            } else {
+                HStack {
+                    Button("Calibrate sensors…") { hub.calibrateSensors() }
+                    Text("About two minutes, under full load.")
+                        .settingsFootnote()
+                }
+            }
+        }
+
         SettingsGroup("Available sensors") {
             Text("\(hub.snapshot.sensors.readings.count) readings on this Mac, grouped by where they sit.")
                 .settingsFootnote()
@@ -481,6 +529,69 @@ struct SettingsGroup<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.04)))
+        }
+    }
+}
+
+/// The measured response of every sensor, strongest first.
+struct CalibrationResults: View {
+    let calibration: SensorCalibration
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
+                Text("SENSOR").frame(width: 112, alignment: .leading)
+                Text("IDLE").frame(width: 42, alignment: .trailing)
+                Text("D-" + calibration.efficiencyClusterName.prefix(3).uppercased())
+                    .frame(width: 50, alignment: .trailing)
+                Text("D-" + calibration.performanceClusterName.prefix(3).uppercased())
+                    .frame(width: 50, alignment: .trailing)
+                Text("VERDICT").frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(.tertiary)
+
+            ForEach(calibration.responses.sorted { $0.response > $1.response }) { response in
+                HStack(spacing: 8) {
+                    Text(SensorMonitor.displayName(forSensorNamed: response.sensor))
+                        .frame(width: 112, alignment: .leading)
+                        .lineLimit(1)
+                    Text(String(format: "%.0f°", response.idle))
+                        .frame(width: 42, alignment: .trailing)
+                    Text(String(format: "%+.1f", response.deltaEfficiency))
+                        .frame(width: 50, alignment: .trailing)
+                    Text(String(format: "%+.1f", response.deltaPerformance))
+                        .frame(width: 50, alignment: .trailing)
+                    Text(verdict(response))
+                        .foregroundStyle(color(response.affinity))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.system(size: 10, design: .monospaced))
+            }
+
+            Text("Heat spreads across a die, so every sensor on it responds to both "
+               + "clusters. The split above is by which one moves it more — it is an "
+               + "affinity, not a per-core mapping.")
+                .settingsFootnote()
+                .padding(.top, 4)
+        }
+    }
+
+    private func verdict(_ response: SensorResponse) -> String {
+        switch response.affinity {
+        case .performance: calibration.performanceClusterName + " area"
+        case .efficiency: calibration.efficiencyClusterName + " area"
+        case .shared: "shared die"
+        case .unrelated: "not CPU"
+        }
+    }
+
+    private func color(_ affinity: SensorAffinity) -> Color {
+        switch affinity {
+        case .performance: .blue
+        case .efficiency: .teal
+        case .shared: .secondary
+        case .unrelated: Color.secondary.opacity(0.6)
         }
     }
 }

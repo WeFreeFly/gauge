@@ -3,6 +3,16 @@ import GaugeKit
 
 let t = Harness()
 
+/// The calibration is machine-specific, so the round-trip test needs the same
+/// model string the settings loader checks against.
+func sysctlStringForTests(_ name: String) -> String {
+    var size = 0
+    guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 0 else { return "Mac" }
+    var buffer = [CChar](repeating: 0, count: size)
+    guard sysctlbyname(name, &buffer, &size, nil, 0) == 0 else { return "Mac" }
+    return String(cString: buffer)
+}
+
 // MARK: - Ring buffer
 
 t.suite("RingBuffer") {
@@ -285,7 +295,8 @@ t.suite("Settings") {
             $0.showsLine = false
             $0.usesLoadColor = false
         }
-        settings.panelMaterial = .opaque
+        settings.panel = PanelAppearance(material: .clearGlass, tintHex: "#0A84FF",
+                                         tintStrength: 0.3, cornerRadius: 18)
         settings.menubarGraphWidth = 48
         settings.save()
 
@@ -294,11 +305,32 @@ t.suite("Settings") {
         t.equal(reloaded.graph(.cpu).fade, .duotone)
         t.close(reloaded.graph(.cpu).fadeOpacity, 0.8)
         t.expect(!reloaded.graph(.cpu).showsLine, "line toggle should persist")
-        t.equal(reloaded.panelMaterial, .opaque)
+        t.equal(reloaded.panel.material, .clearGlass)
+        t.equal(reloaded.panel.tintHex, "#0A84FF")
+        t.close(reloaded.panel.tintStrength, 0.3)
+        t.close(reloaded.panel.cornerRadius, 18)
         t.close(reloaded.menubarGraphWidth, 48)
 
         reloaded.resetGraph(.cpu)
         t.equal(reloaded.graph(.cpu), original, "reset should restore the shipped default")
+    }
+
+    t.test("panel tint is ignored until it has both a colour and strength") {
+        var panel = PanelAppearance(tintHex: "", tintStrength: 0.5)
+        t.isNil(panel.tint, "no colour means no tint")
+
+        panel = PanelAppearance(tintHex: "#FF2D55", tintStrength: 0)
+        t.isNil(panel.tint, "zero strength means no tint")
+
+        panel = PanelAppearance(tintHex: "#FF2D55", tintStrength: 0.4)
+        t.notNil(panel.tint, "a colour with strength should tint")
+    }
+
+    t.test("glass materials are recognised as glass") {
+        t.expect(PanelMaterial.liquidGlass.usesGlass, "liquid glass")
+        t.expect(PanelMaterial.clearGlass.usesGlass, "clear glass")
+        t.expect(!PanelMaterial.vibrant.usesGlass, "vibrancy is not glass")
+        t.expect(!PanelMaterial.opaque.usesGlass, "solid is not glass")
     }
 
     t.test("every module ships with a colour of its own") {
@@ -364,6 +396,72 @@ t.suite("Colours") {
         let blue = RGBAColor(hex: "#0000FF")!
         t.equal(red.blended(with: blue, amount: 5).hex, "#0000FF")
         t.equal(red.blended(with: blue, amount: -2).hex, "#FF0000")
+    }
+}
+
+// MARK: - Sensor calibration
+
+t.suite("Sensor calibration") {
+    func response(_ name: String, idle: Double, e: Double, p: Double) -> SensorResponse {
+        SensorResponse(sensor: name, idle: idle, deltaEfficiency: e, deltaPerformance: p)
+    }
+
+    // The numbers below are the ones measured on a Mac17,2.
+    t.test("a sensor that barely moves is not a CPU sensor") {
+        t.equal(response("PMU2 tdie1", idle: 42.8, e: 0.6, p: 0.9).affinity, .unrelated)
+        t.equal(response("gas gauge battery", idle: 31.1, e: 0.1, p: 0.0).affinity, .unrelated)
+    }
+
+    t.test("a sensor the fast cluster moves further leans that way") {
+        t.equal(response("PMU tdie1", idle: 46.7, e: 10.4, p: 19.5).affinity, .performance)
+        t.equal(response("PMU tdie6", idle: 48.3, e: 9.7, p: 15.3).affinity, .performance)
+    }
+
+    t.test("a sensor the efficient cluster moves further leans that way") {
+        t.equal(response("PMU tdie8", idle: 49.3, e: 13.3, p: 12.0).affinity, .efficiency)
+    }
+
+    t.test("a sensor both clusters move equally is shared") {
+        t.equal(response("PMU tdie3", idle: 47.5, e: 9.4, p: 9.2).affinity, .shared)
+        t.equal(response("PMU tdie13", idle: 47.4, e: 7.0, p: 8.7).affinity, .shared)
+    }
+
+    t.test("a tiny response never produces a confident verdict") {
+        // 0.2 against 0.1 is a ratio of 2, but both are noise.
+        t.equal(response("noise", idle: 40, e: 0.1, p: 0.2).affinity, .unrelated)
+    }
+
+    t.test("a calibration from another Mac is not applied here") {
+        let calibration = SensorCalibration(responses: [], performanceClusterName: "Super",
+                                            efficiencyClusterName: "Efficiency",
+                                            machineModel: "Mac99,9")
+        t.expect(!calibration.applies(to: "Mac17,2"), "should reject a foreign calibration")
+        t.expect(calibration.applies(to: "Mac99,9"), "should accept its own machine")
+    }
+
+    t.test("calibration round-trips through settings") {
+        let suite = "gauge.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+
+        let model = sysctlStringForTests("hw.model")
+        let settings = GaugeSettings(defaults: defaults)
+        settings.sensorCalibration = SensorCalibration(
+            responses: [response("PMU tdie1", idle: 46.7, e: 10.4, p: 19.5)],
+            performanceClusterName: "Super", efficiencyClusterName: "Efficiency",
+            machineModel: model)
+        settings.save()
+
+        let reloaded = GaugeSettings(defaults: defaults)
+        t.notNil(reloaded.sensorCalibration, "calibration should survive a reload")
+        t.equal(reloaded.sensorCalibration?.affinity(for: "PMU tdie1"), .performance)
+        t.equal(reloaded.sensorCalibration?.clusterName(for: .performance), "Super")
+    }
+
+    t.test("sensor numbers survive relabelling") {
+        t.equal(SensorMonitor.sensorNumber("PMU tdie14"), "14")
+        t.equal(SensorMonitor.sensorNumber("PMU2 tdev3"), "3")
+        t.equal(SensorMonitor.sensorNumber("NAND CH0 temp"), "")
     }
 }
 

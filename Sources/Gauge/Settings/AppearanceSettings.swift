@@ -131,6 +131,157 @@ extension Color {
     }
 }
 
+/// Controls for the dropdown's own background — the glass, its tint, and the
+/// shape it is cut to.
+struct PanelBackgroundEditor: View {
+    @EnvironmentObject private var settings: GaugeSettings
+
+    private var panel: PanelAppearance { settings.panel }
+
+    private func update(_ transform: (inout PanelAppearance) -> Void) {
+        var value = settings.panel
+        transform(&value)
+        settings.panel = value
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            preview
+
+            Picker("Material", selection: Binding(
+                get: { panel.material },
+                set: { value in update { $0.material = value } }
+            )) {
+                ForEach(PanelMaterial.available, id: \.self) { Text($0.title).tag($0) }
+            }
+            .frame(width: 320)
+
+            Text(materialExplanation)
+                .settingsFootnote()
+
+            HStack(spacing: 14) {
+                ColorPicker("Tint", selection: Binding(
+                    get: { Color(hex: panel.tintHex.isEmpty ? "#7F7F7F" : panel.tintHex) },
+                    set: { value in
+                        guard let hex = value.hexString else { return }
+                        update { $0.tintHex = hex }
+                    }
+                ), supportsOpacity: false)
+                .frame(width: 110)
+                .font(.system(size: 11))
+
+                Button("No tint") { update { $0.tintHex = "" } }
+                    .controlSize(.small)
+                    .disabled(panel.tintHex.isEmpty)
+            }
+
+            LabeledContent("Tint strength") {
+                HStack {
+                    Slider(value: Binding(
+                        get: { panel.tintStrength },
+                        set: { value in update { $0.tintStrength = value } }
+                    ), in: 0...0.8)
+                    .frame(width: 180)
+                    Text("\(Int(panel.tintStrength * 100))%")
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 40, alignment: .trailing)
+                }
+            }
+            .disabled(panel.tintHex.isEmpty)
+
+            LabeledContent("Corner radius") {
+                HStack {
+                    Slider(value: Binding(
+                        get: { panel.cornerRadius },
+                        set: { value in update { $0.cornerRadius = value } }
+                    ), in: 0...28, step: 1)
+                    .frame(width: 180)
+                    Text("\(Int(panel.cornerRadius)) pt")
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 40, alignment: .trailing)
+                }
+            }
+
+            LabeledContent("Shadow") {
+                HStack {
+                    Slider(value: Binding(
+                        get: { panel.shadowStrength },
+                        set: { value in update { $0.shadowStrength = value } }
+                    ), in: 0...0.8)
+                    .frame(width: 180)
+                    Text("\(Int(panel.shadowStrength * 100))%")
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 40, alignment: .trailing)
+                }
+            }
+
+            Toggle("Hairline edge", isOn: Binding(
+                get: { panel.showsBorder },
+                set: { value in update { $0.showsBorder = value } }
+            ))
+
+            if panel.material.usesGlass {
+                Toggle("Glass reacts to the pointer", isOn: Binding(
+                    get: { panel.interactive },
+                    set: { value in update { $0.interactive = value } }
+                ))
+                .help("The material brightens and shifts under the cursor.")
+            }
+
+            Button("Reset background") { settings.panel = .standard }
+                .controlSize(.small)
+        }
+    }
+
+    private var materialExplanation: String {
+        switch panel.material {
+        case .liquidGlass:
+            "The macOS 26 material: it refracts what is behind the panel. Tint colours the glass itself."
+        case .clearGlass:
+            "Clearer glass — more of the desktop shows through, so a tint helps text stay readable."
+        case .vibrant:
+            "The blur system menus used before Liquid Glass."
+        case .opaque:
+            "A plain fill. The most readable option over busy windows."
+        }
+    }
+
+    /// Glass only looks like anything over something, so the preview sits on a
+    /// patterned backdrop rather than the settings window's own grey.
+    private var preview: some View {
+        ZStack {
+            LinearGradient(colors: [.purple, .blue, .teal, .orange],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            HStack(spacing: 8) {
+                ForEach(0..<7) { index in
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(.white.opacity(0.25))
+                        .frame(width: 14)
+                        .offset(y: CGFloat(index % 3) * 8)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("CPU")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("48%")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                HStack {
+                    Text("Memory").font(.system(size: 10)).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("11.6 GB").font(.system(size: 10, design: .monospaced))
+                }
+                .frame(width: 130)
+            }
+            .padding(12)
+            .panelChrome(panel)
+        }
+        .frame(height: 150)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
 // MARK: - The Appearance page
 
 struct AppearanceSettingsPage: View {
@@ -152,15 +303,9 @@ struct AppearanceSettingsPage: View {
                 .settingsFootnote()
         }
 
-        SettingsGroup("Dropdowns") {
-            Picker("Background", selection: $settings.panelMaterial) {
-                ForEach(PanelMaterial.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 240)
-            Text("Translucent matches the system menus; solid is easier to read over busy windows.")
-                .settingsFootnote()
-
+        SettingsGroup("Popup background") {
+            PanelBackgroundEditor()
+            Divider().padding(.vertical, 2)
             Toggle("Highlight rows under the pointer", isOn: $settings.highlightRowsOnHover)
         }
 

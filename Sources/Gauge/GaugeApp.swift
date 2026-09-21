@@ -62,7 +62,15 @@ struct GaugeApp {
         // `--map-sensors` measures which thermal sensors respond to CPU load,
         // which is how the sensor grouping in GaugeKit was decided.
         if arguments.contains("--map-sensors") {
-            SensorMapping.run()
+            SensorMapping.run(save: arguments.contains("--save"))
+            return
+        }
+        // `--panel <module> [seconds]` puts one dropdown on screen, which is
+        // the only way to see a glass material — it cannot be captured offscreen.
+        if let index = arguments.firstIndex(of: "--panel") {
+            let name = arguments.count > index + 1 ? arguments[index + 1] : "cpu"
+            let seconds = arguments.count > index + 2 ? Double(arguments[index + 2]) ?? 10 : 10
+            PanelPreviewRun.run(module: ModuleID(rawValue: name) ?? .cpu, seconds: seconds)
             return
         }
         if arguments.contains("--bench") {

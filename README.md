@@ -56,7 +56,10 @@ Layout เดินตามโครงเดียวกับ iStat Menus: �
   - `Fade between colours` — ไล่จากสีหลักไปสีรอง
 - **ความเข้มของ fade** ปรับได้ 5–100%
 - **สลับได้ว่าจะให้ตัวเลขเปลี่ยนสีตามโหลด** (เขียว→เหลือง→ส้ม→แดง) หรือใช้สีที่เลือกไว้ตลอด
-- **พื้นหลัง dropdown** เลือกโปร่งแสง (แบบเมนูระบบ) หรือทึบ
+- **พื้นหลัง popup** — Liquid Glass ของ macOS 26 (ค่าเริ่มต้น), Liquid Glass แบบใส,
+  vibrancy แบบเดิม หรือพื้นทึบ พร้อมปรับ **สี tint**, **ความเข้ม tint**, **ความมนมุม**,
+  **เงา** และ **เส้นขอบ** ได้ทั้งหมด มี preview วางบนพื้นหลังลายเพื่อให้เห็นเอฟเฟกต์จริง
+  (บน macOS ที่ยังไม่มี Liquid Glass จะถอยไปใช้ vibrancy ให้เอง)
 - **ไฮไลต์แถวตอนเอาเมาส์ชี้** เปิด/ปิดได้
 - **ความกว้างกราฟบน menu bar** 16–80 pt
 - มีตัวอย่างสดในหน้า settings เห็นผลทันทีก่อนกด
@@ -84,7 +87,8 @@ build/Gauge.app/Contents/MacOS/Gauge --dump      # พิมพ์ค่าท�
 build/Gauge.app/Contents/MacOS/Gauge --preview ./out --demo  # render ทุก panel/menubar เป็น PNG
 build/Gauge.app/Contents/MacOS/Gauge --weather "Bangkok"  # ทดสอบ weather provider
 build/Gauge.app/Contents/MacOS/Gauge --bench       # จับเวลาการอ่านค่าแต่ละตัว
-build/Gauge.app/Contents/MacOS/Gauge --map-sensors # หาว่าเซ็นเซอร์ตัวไหนคือ CPU จริง (ใช้เวลา ~2 นาที)
+build/Gauge.app/Contents/MacOS/Gauge --map-sensors --save  # calibrate เซ็นเซอร์จาก CLI (~2 นาที)
+build/Gauge.app/Contents/MacOS/Gauge --panel cpu 20        # เปิด dropdown จริงบนจอ 20 วินาที
 swift Scripts/make-icon.swift              # สร้างไอคอนใหม่
 ```
 
@@ -117,6 +121,20 @@ efficiency core ส่วนงาน user-interactive จะวิ่งบน�
 ส่วนชื่อคลัสเตอร์ CPU เอามาจากระบบตรง ๆ (`hw.perflevel0.name`) — บน M5 คือ **Super** กับ
 **Efficiency** ไม่ใช่ P/E ที่ hard-code ไว้ และรู้ว่าคอร์ไหนอยู่คลัสเตอร์ไหนจาก `cluster-type`
 ใน IORegistry ไม่ใช่การเดาลำดับ
+
+### Calibrate ในตัวแอป
+
+**Settings → Sensors → Calibrate sensors…** จะรันการทดลองข้างบนให้บนเครื่องของคุณเอง
+(ราว 2 นาที เครื่องจะทำงานหนักตลอดช่วงนั้น กดยกเลิกได้) เมื่อเสร็จแล้ว:
+
+- เซ็นเซอร์จะถูกจัดกลุ่มใหม่เป็น **"Super Core Area N"** และ **"Efficiency Core Area N"**
+  ตามคลัสเตอร์ที่วัดได้ว่ามันตอบสนองมากกว่า ส่วนตัวที่ตอบสนองพอ ๆ กันจะขึ้นว่า "Shared Die N"
+- panel จะแสดงอุณหภูมิเฉลี่ยแยกรายคลัสเตอร์
+- มีตารางผลการวัดให้ดูว่าแต่ละตัวขยับกี่องศาตอนโหลดคลัสเตอร์ไหน
+- ผลเก็บไว้ผูกกับรุ่นเครื่อง ถ้าย้ายไฟล์ settings ไปเครื่องอื่นจะไม่ถูกนำมาใช้
+
+ย้ำอีกครั้งว่านี่คือ **affinity ที่วัดได้ ไม่ใช่การ map รายคอร์** — ความร้อนกระจายทั่วได
+เซ็นเซอร์ทุกตัวจึงขยับตามทั้งสองคลัสเตอร์ การแบ่งคือดูว่าคลัสเตอร์ไหนทำให้มันขยับมากกว่า
 
 ---
 
@@ -215,6 +233,16 @@ Sources/
 3. **SMC struct ต้องอยู่ใน C** — user client ของ SMC ต้องการ struct ขนาด 80 ไบต์เป๊ะ ๆ
    แต่ Swift จัดให้เป็น 76 (มันยัด field ถัดไปลงใน tail padding ของ `SMCKeyInfoData`)
    ทำให้ทุกคำขอถูกปฏิเสธเงียบ ๆ จึงต้องเก็บ struct ไว้ฝั่ง C
+
+4. **dropdown ไม่ได้ใช้ NSPopover** — NSPopover วาดพื้นหลังทึบกับหัวลูกศรของตัวเองทับสิ่งที่
+   content วางไว้ข้างหลัง รวมถึง Liquid Glass ด้วย จึงเปลี่ยนไปใช้ borderless `NSPanel`
+   พื้นหลังใส แล้วให้ material เป็นพื้นหลังเอง (ได้ควบคุมความมนมุมกับเงาด้วย)
+   ผลข้างเคียงที่ต้องกัน: คลิกไอคอนตอน panel เปิดอยู่จะทำให้ panel เสีย key แล้วปิดตัวเอง
+   *ก่อน* action ของปุ่มจะทำงาน ถ้าไม่กันไว้จะเด้งเปิดใหม่ทันที
+
+5. **Liquid Glass ไม่ปรากฏในภาพ preview** — window server เป็นคน composite ให้
+   การ render ลง bitmap นอกจอจึงได้พื้นโปร่งเปล่า ๆ `--preview` เลยบังคับใช้พื้นทึบ
+   ถ้าจะดู material จริงต้องใช้ `--panel <module>` ที่เปิดหน้าต่างจริงบนจอ
 
 > คอมเมนต์ในโค้ดเขียนเป็นภาษาอังกฤษตามธรรมเนียมของโปรเจกต์ Swift — ถ้าอยากให้แปลเป็นไทยบอกได้
 

@@ -53,6 +53,9 @@ public final class MonitorHub: ObservableObject {
     @Published public private(set) var weatherError: String?
     @Published public private(set) var isRefreshingWeather = false
 
+    /// Progress of a running sensor calibration, nil when none is running.
+    @Published public private(set) var calibrationProgress: SensorCalibrator.Progress?
+
     public let settings: GaugeSettings
     public let hardware = HardwareInfo()
     /// "Super" / "Efficiency" on an M5, "Performance" / "Efficiency" before it.
@@ -173,6 +176,8 @@ public final class MonitorHub: ObservableObject {
             .dropFirst()
             .sink { [weak self] _ in self?.refreshWeather(force: true) }
             .store(in: &cancellables)
+
+        sensorMonitor.calibration = settings.sensorCalibration
     }
 
     public func start() {
@@ -459,6 +464,47 @@ public final class MonitorHub: ObservableObject {
             attribution: "Demo data",
             fetchedAt: now)
         weatherError = nil
+    }
+
+    // MARK: Sensor calibration
+
+    private var calibrator: SensorCalibrator?
+
+    public var isCalibrating: Bool { calibrationProgress != nil }
+
+    /// Measures which thermal sensors follow which core cluster. Takes about
+    /// two minutes of deliberate load, so it only runs when asked.
+    public func calibrateSensors() {
+        guard calibrator == nil else { return }
+        let calibrator = SensorCalibrator()
+        self.calibrator = calibrator
+        calibrationProgress = SensorCalibrator.Progress(stage: "Starting", fraction: 0)
+
+        queue.async { [weak self] in
+            let result = calibrator.run { progress in
+                Task { @MainActor in self?.calibrationProgress = progress }
+            }
+            Task { @MainActor in
+                guard let self else { return }
+                if let result {
+                    self.settings.sensorCalibration = result
+                    self.sensorMonitor.calibration = result
+                    self.sampleNow()
+                }
+                self.calibrationProgress = nil
+                self.calibrator = nil
+            }
+        }
+    }
+
+    public func cancelCalibration() {
+        calibrator?.cancel()
+    }
+
+    public func clearCalibration() {
+        settings.sensorCalibration = nil
+        sensorMonitor.calibration = nil
+        sampleNow()
     }
 
     public func resetNetworkTotals() {

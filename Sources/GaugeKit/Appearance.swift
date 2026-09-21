@@ -141,14 +141,76 @@ public struct RGBAColor: Codable, Equatable, Sendable {
     }
 }
 
-/// How much the panel background lets through.
+/// What the dropdown is made of.
 public enum PanelMaterial: String, Codable, CaseIterable, Sendable {
-    case vibrant, opaque
+    /// The macOS 26 material: refracts and reflects what is behind it.
+    case liquidGlass
+    /// Clearer glass — more of the desktop shows through.
+    case clearGlass
+    /// The older vibrancy blur used by system menus before Liquid Glass.
+    case vibrant
+    /// A plain filled background, easiest to read over busy windows.
+    case opaque
 
     public var title: String {
         switch self {
+        case .liquidGlass: "Liquid Glass"
+        case .clearGlass: "Liquid Glass (clear)"
         case .vibrant: "Translucent"
         case .opaque: "Solid"
         }
     }
+
+    public var usesGlass: Bool { self == .liquidGlass || self == .clearGlass }
+
+    /// Liquid Glass needs macOS 26; older systems only offer the blur.
+    public static var supportsGlass: Bool {
+        if #available(macOS 26.0, *) { return true }
+        return false
+    }
+
+    public static var available: [PanelMaterial] {
+        supportsGlass ? allCases : allCases.filter { !$0.usesGlass }
+    }
+
+    /// The best background this system can draw.
+    public static var best: PanelMaterial { supportsGlass ? .liquidGlass : .vibrant }
+}
+
+/// Tint and shape applied to the dropdown's background.
+public struct PanelAppearance: Codable, Equatable, Sendable {
+    public var material: PanelMaterial
+    /// Colour mixed into the glass. Empty means untinted.
+    public var tintHex: String
+    /// 0 = no tint, 1 = as strong as the material allows.
+    public var tintStrength: Double
+    public var cornerRadius: Double
+    /// Glass that responds to the pointer moving over it.
+    public var interactive: Bool
+    /// A hairline edge, which helps the panel separate from a busy desktop.
+    public var showsBorder: Bool
+    public var shadowStrength: Double
+
+    public init(material: PanelMaterial = .liquidGlass,
+                tintHex: String = "",
+                tintStrength: Double = 0.18,
+                cornerRadius: Double = 14,
+                interactive: Bool = false,
+                showsBorder: Bool = true,
+                shadowStrength: Double = 0.35) {
+        self.material = material
+        self.tintHex = tintHex
+        self.tintStrength = tintStrength
+        self.cornerRadius = cornerRadius
+        self.interactive = interactive
+        self.showsBorder = showsBorder
+        self.shadowStrength = shadowStrength
+    }
+
+    public var tint: RGBAColor? {
+        guard !tintHex.isEmpty, tintStrength > 0.01 else { return nil }
+        return RGBAColor(hex: tintHex)
+    }
+
+    public static var standard: PanelAppearance { PanelAppearance(material: .best) }
 }

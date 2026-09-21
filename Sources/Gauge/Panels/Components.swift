@@ -29,11 +29,74 @@ struct Panel<Content: View>: View {
         }
         .padding(14)
         .frame(width: width, alignment: .leading)
-        .background {
-            if settings.panelMaterial == .vibrant {
-                VisualEffectBackground()
+        .panelChrome(settings.panel)
+    }
+}
+
+/// The dropdown's background: Liquid Glass, the older vibrancy blur, or a
+/// plain fill, with an optional tint and a hairline edge.
+struct PanelChrome: ViewModifier {
+    let appearance: PanelAppearance
+
+    private var tint: Color? {
+        guard let rgba = appearance.tint else { return nil }
+        return Color(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue,
+                     opacity: appearance.tintStrength)
+    }
+
+    /// Liquid Glass arrived in macOS 26. Asking for it on anything older
+    /// falls back to the vibrancy blur, which is the closest thing available.
+    private var resolvedMaterial: PanelMaterial {
+        guard appearance.material.usesGlass else { return appearance.material }
+        if #available(macOS 26.0, *) { return appearance.material }
+        return .vibrant
+    }
+
+    func body(content: Content) -> some View {
+        let radius = appearance.cornerRadius
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+
+        Group {
+            switch resolvedMaterial {
+            case .liquidGlass, .clearGlass:
+                if #available(macOS 26.0, *) {
+                    // Liquid Glass supplies its own shape, so it is applied
+                    // rather than layered behind the content.
+                    content.glassEffect(
+                        (resolvedMaterial == .clearGlass ? Glass.clear : Glass.regular)
+                            .tint(tint)
+                            .interactive(appearance.interactive),
+                        in: .rect(cornerRadius: radius))
+                } else {
+                    content.background { VisualEffectBackground() }.clipShape(shape)
+                }
+            case .vibrant:
+                content
+                    .background { VisualEffectBackground() }
+                    .background { tint }
+                    .clipShape(shape)
+            case .opaque:
+                content
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .background { tint }
+                    .clipShape(shape)
             }
         }
+        .overlay {
+            if appearance.showsBorder {
+                shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+            }
+        }
+        .shadow(color: .black.opacity(appearance.shadowStrength),
+                radius: 16 * appearance.shadowStrength, y: 6 * appearance.shadowStrength)
+        // The shadow needs room outside the panel's own bounds.
+        .padding(appearance.shadowStrength > 0 ? 14 : 0)
+    }
+}
+
+extension View {
+    func panelChrome(_ appearance: PanelAppearance) -> some View {
+        modifier(PanelChrome(appearance: appearance))
     }
 }
 

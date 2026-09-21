@@ -26,6 +26,16 @@ enum PreviewRenderer {
         hub.sampleNow()
         RunLoop.current.run(until: Date().addingTimeInterval(1.5))
         // Two samples make a straight line; a demo history shows the shapes.
+        // Liquid Glass and vibrancy are composited by the window server and
+        // come out empty in an offscreen bitmap, so the previews use a solid
+        // background. The material itself has to be judged on screen.
+        hub.settings.panel = PanelAppearance(material: .opaque,
+                                             tintHex: hub.settings.panel.tintHex,
+                                             tintStrength: hub.settings.panel.tintStrength,
+                                             cornerRadius: hub.settings.panel.cornerRadius,
+                                             showsBorder: hub.settings.panel.showsBorder,
+                                             shadowStrength: 0)
+
         if demo {
             hub.injectDemoHistory()
             hub.settings.weatherEnabled = true

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Foundation
 
 /// A reading the Sensors menu bar item can show.

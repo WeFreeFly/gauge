@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import SwiftUI
 import ServiceManagement
 import GaugeKit
@@ -532,6 +533,14 @@ struct AboutSettings: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .padding(.top, 2)
+                    HStack(spacing: 4) {
+                        Text(GaugeVersion.copyright)
+                        Text("·")
+                        Link(GaugeVersion.licence,
+                             destination: URL(string: GaugeVersion.licenceURL)!)
+                    }
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 0)
             }

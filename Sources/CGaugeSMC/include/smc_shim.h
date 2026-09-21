@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 //  Apple SMC access shim.
 //
 //  The SMC user-client expects an exact 80-byte request struct. Swift lays the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #!/usr/bin/env swift
 //
 // Draws the app icon and writes an .icns. Run from the project root:

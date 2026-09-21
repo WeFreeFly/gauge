@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Foundation
 
 /// Moves settings written under the old bundle identifier.

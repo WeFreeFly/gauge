@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Builds Gauge.app from the SwiftPM product.
 #
 # The scratch directory is kept outside the project on purpose: this tree lives
@@ -37,14 +38,35 @@ if [ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]; then
   cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 fi
 
-# Ad-hoc signature. Enough to run locally and to keep the SMC/IOKit calls
-# working; a Developer ID signature would be needed only for distribution.
-echo "▸ Signing (ad-hoc)…"
-codesign --force --sign - --timestamp=none "$APP_DIR" >/dev/null 2>&1 \
-  || echo "  (signing skipped)"
+# Sign with a Developer ID if one is installed, otherwise ad-hoc.
+#
+# A Developer ID signature plus notarisation is what removes the
+# right-click-to-open step on other people's Macs. Ad-hoc is enough to run
+# here. Set GAUGE_SIGN_IDENTITY to choose between several certificates.
+IDENTITY="${GAUGE_SIGN_IDENTITY:-}"
+if [ -z "$IDENTITY" ]; then
+  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+              | grep "Developer ID Application" | head -1 \
+              | sed -E 's/.*"(.*)".*/\1/' || true)"
+fi
+
+if [ -n "$IDENTITY" ]; then
+  echo "▸ Signing as $IDENTITY…"
+  # The hardened runtime is required before Apple will notarise anything.
+  codesign --force --deep --options runtime --timestamp \
+           --sign "$IDENTITY" "$APP_DIR"
+  codesign --verify --strict --verbose=1 "$APP_DIR" 2>&1 | sed 's/^/  /'
+else
+  echo "▸ Signing (ad-hoc — no Developer ID certificate found)…"
+  codesign --force --sign - --timestamp=none "$APP_DIR" >/dev/null 2>&1 \
+    || echo "  (signing skipped)"
+fi
 
 echo "✓ $APP_DIR"
 echo
+if [ -n "$IDENTITY" ]; then
+  echo "  Signed with a Developer ID. Notarise with: ./Scripts/package.sh"
+fi
 echo "  Run:      open '$APP_DIR'"
 echo "  Install:  cp -R '$APP_DIR' /Applications/"
 echo "  Inspect:  '$APP_DIR/Contents/MacOS/Gauge' --dump"

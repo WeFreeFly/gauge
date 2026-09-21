@@ -45,6 +45,11 @@ Each menu bar item draws as text, a graph, both, a ring gauge, or an icon.
 
 ![Chart types](docs/charts.png)
 
+The panel screenshots are real captures of the Liquid Glass (clear) material
+over a fixed backdrop — `./Scripts/screenshots.sh` regenerates them. Glass is
+composited by the window server and comes out empty in an offscreen render,
+so each panel is put on screen and captured by window id.
+
 Hovering any history graph shows a crosshair with the time, how long ago it
 was, and every series' value at that point. Each graph has its own range menu:
 10 minutes, 1, 3, 6 or 12 hours, or 1, 3, 7, 14 or 28 days.
@@ -63,13 +68,27 @@ open package/
 | **`Gauge-1.0.dmg`** | Drag Gauge onto the Applications shortcut beside it |
 | **`Gauge-1.0.pkg`** | Double-click and follow the installer |
 
-### First launch needs a right-click
+### Signing
 
-Gauge is signed ad-hoc, not with a paid Developer ID, so macOS refuses the
-first double-click. Right-click (or Control-click) Gauge in Applications,
-choose **Open**, and confirm. macOS remembers; it opens normally afterwards.
+If a **Developer ID Application** certificate is installed, `build.sh` finds
+it and signs with the hardened runtime; `package.sh` signs the installer with
+a **Developer ID Installer** certificate and, given a notarytool profile,
+notarises and staples both files:
 
-If it still refuses:
+```bash
+xcrun notarytool store-credentials gauge \
+      --apple-id you@example.com --team-id TEAMID --password <app-specific-password>
+
+GAUGE_NOTARY_PROFILE=gauge ./Scripts/package.sh
+```
+
+Gauge declares **no entitlements** and needs no capabilities, so nothing has
+to be registered beyond the certificates themselves.
+
+Without a certificate the build falls back to an ad-hoc signature, which runs
+fine locally but makes macOS refuse the first double-click on another Mac.
+Right-click (or Control-click) Gauge in Applications, choose **Open**, and
+confirm; macOS remembers. If it still refuses:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Gauge.app
@@ -256,5 +275,12 @@ Two more that cost real time:
 
 ## Licence
 
-None chosen yet, which under copyright means all rights reserved. Add one
-before making the repository public if you want others to be able to use it.
+[Apache License 2.0](LICENSE). Copyright 2026 Wefreefly.
+
+You may use, modify and redistribute this, including commercially, provided
+you keep the licence and notice and state what you changed. It also grants a
+patent licence from the contributors, which is the main thing it adds over
+MIT. It comes with no warranty.
+
+Not affiliated with the Apache Software Foundation — the licence is simply the
+terms this is offered under.

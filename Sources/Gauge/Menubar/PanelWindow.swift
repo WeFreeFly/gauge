@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import AppKit
 import SwiftUI
 import GaugeKit
@@ -102,6 +103,10 @@ final class PanelWindow: NSObject, NSWindowDelegate {
         origin.y = max(origin.y, visible.minY + 4)
         window.setFrameOrigin(origin)
     }
+
+    /// The window server's id for this panel, so a screenshot script can
+    /// capture exactly this window and nothing else.
+    var windowNumber: Int { window.windowNumber }
 
     /// Used by `--panel`, which has no status item to anchor to.
     func showCentred() {

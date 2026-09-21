@@ -30,7 +30,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Gauge — a local system monitor. Wefreefly &lt;wefreefly@thaisimply.com&gt;</string>
+	<string>Copyright 2026 Wefreefly &lt;wefreefly@thaisimply.com&gt;. Licensed under the Apache License 2.0.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>

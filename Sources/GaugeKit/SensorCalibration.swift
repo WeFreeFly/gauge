@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import Foundation
 
 /// Which part of the chip a thermal sensor actually responds to.

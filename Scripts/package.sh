@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Builds Gauge and packages it for installation.
 #
 #   ./Scripts/package.sh            both a .dmg and a .pkg
@@ -28,6 +29,24 @@ IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
 
 # Kept beside the app's own constants in Sources/Gauge/Diagnostics.swift so the
 # installer and the About pane say the same thing.
+# Signing and notarisation are optional: without a certificate the packages
+# are still built, just ad-hoc signed, and the first launch needs a
+# right-click. With one they open like any other app.
+#
+#   GAUGE_SIGN_IDENTITY      "Developer ID Application: …"  (else auto-detected)
+#   GAUGE_INSTALLER_IDENTITY "Developer ID Installer: …"    (else auto-detected)
+#   GAUGE_NOTARY_PROFILE     a notarytool keychain profile  (else no notarising)
+#
+# Create the profile once with:
+#   xcrun notarytool store-credentials gauge --apple-id you@example.com \
+#         --team-id TEAMID --password <app-specific-password>
+INSTALLER_IDENTITY="${GAUGE_INSTALLER_IDENTITY:-}"
+if [ -z "$INSTALLER_IDENTITY" ]; then
+  INSTALLER_IDENTITY="$(security find-identity -v 2>/dev/null \
+    | grep "Developer ID Installer" | head -1 | sed -E 's/.*"(.*)".*/\1/' || true)"
+fi
+NOTARY_PROFILE="${GAUGE_NOTARY_PROFILE:-}"
+
 AUTHOR="Wefreefly"
 AUTHOR_EMAIL="wefreefly@thaisimply.com"
 BUILT_WITH="Built with Claude Code"
@@ -95,6 +114,7 @@ TXT
                  -fs HFS+ \
                  -format UDZO -imagekey zlib-level=9 \
                  -quiet "$dmg"
+  notarise "$dmg" "disk image"
   verify_dmg "$dmg"
   echo "✓ $dmg  ($(du -h "$dmg" | cut -f1))"
 }
@@ -150,6 +170,28 @@ verify_pkg() {
   fi
   [ -x "$app/Contents/MacOS/Gauge" ] || { echo "  ✗ payload app has no executable"; exit 1; }
   rm -rf "$(dirname "$expanded")"
+}
+
+# ---------------------------------------------------------------- notarising
+
+# Uploads to Apple, waits for the verdict, and staples it so the result
+# travels with the file and works offline. Skipped when no profile is set —
+# an unsigned build has nothing to notarise.
+notarise() {
+  local file="$1" kind="$2"
+  [ -n "$NOTARY_PROFILE" ] || return 0
+
+  echo "  notarising the $kind (this takes a few minutes)…"
+  if ! xcrun notarytool submit "$file" --keychain-profile "$NOTARY_PROFILE" \
+       --wait --timeout 30m 2>&1 | sed 's/^/    /'; then
+    echo "  ✗ notarisation failed; the $kind is signed but not notarised"
+    return 0
+  fi
+  if xcrun stapler staple "$file" >/dev/null 2>&1; then
+    echo "  ✓ notarised and stapled"
+  else
+    echo "  ✗ could not staple; the $kind still validates online"
+  fi
 }
 
 # ------------------------------------------------------------------ installer
@@ -261,6 +303,20 @@ XML
                --package-path "$(dirname "$component")" \
                "$pkg" >/dev/null
   rm -rf "$resources" "$(dirname "$distribution")" "$(dirname "$component")"
+
+  # An installer package is signed with its own kind of certificate.
+  if [ -n "$INSTALLER_IDENTITY" ]; then
+    echo "  signing with $INSTALLER_IDENTITY…"
+    local signed="${pkg%.pkg}-signed.pkg"
+    if productsign --sign "$INSTALLER_IDENTITY" --timestamp "$pkg" "$signed" 2>/dev/null; then
+      mv "$signed" "$pkg"
+    else
+      rm -f "$signed"
+      echo "  ✗ could not sign the package; leaving it unsigned"
+    fi
+  fi
+
+  notarise "$pkg" "package"
   verify_pkg "$pkg"
   echo "✓ $pkg  ($(du -h "$pkg" | cut -f1))"
 }
@@ -273,8 +329,16 @@ case "$WHAT" in
 esac
 
 echo
-echo "Neither is signed with a Developer ID, so the first launch needs"
-echo "right-click → Open. That is the only difference from a paid-signed build."
+if [ -n "$NOTARY_PROFILE" ]; then
+  echo "Signed and notarised — these open on any Mac without a right-click."
+elif [ -n "$INSTALLER_IDENTITY" ] || [ -n "${GAUGE_SIGN_IDENTITY:-}" ]; then
+  echo "Signed, but not notarised. Set GAUGE_NOTARY_PROFILE to finish the job;"
+  echo "Gatekeeper still warns on a signed build that Apple has not seen."
+else
+  echo "Not signed with a Developer ID, so the first launch needs"
+  echo "right-click → Open. Install a Developer ID Application certificate"
+  echo "and re-run to remove that step."
+fi
 echo
 echo "  open '$OUTPUT_DIR'"
 echo

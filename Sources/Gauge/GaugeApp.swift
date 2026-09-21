@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import AppKit
 import GaugeKit
 
@@ -68,13 +69,18 @@ struct GaugeApp {
         // `--panel <module> [seconds]` puts one dropdown on screen, which is
         // the only way to see a glass material — it cannot be captured offscreen.
         if let index = arguments.firstIndex(of: "--panel") {
-            let name = arguments.count > index + 1 ? arguments[index + 1] : "cpu"
-            let seconds = arguments.count > index + 2 ? Double(arguments[index + 2]) ?? 10 : 10
-            PanelPreviewRun.run(module: ModuleID(rawValue: name) ?? .cpu, seconds: seconds)
-            return
-        }
-        if arguments.contains("--history-stats") {
-            HistoryStats.run(demo: arguments.contains("--demo"))
+            var options = PanelPreviewRun.Options()
+            if arguments.count > index + 1 {
+                options.module = ModuleID(rawValue: arguments[index + 1]) ?? .cpu
+            }
+            if arguments.count > index + 2, let seconds = Double(arguments[index + 2]) {
+                options.seconds = seconds
+            }
+            if let m = arguments.firstIndex(of: "--material"), arguments.count > m + 1 {
+                options.material = PanelMaterial(rawValue: arguments[m + 1])
+            }
+            options.backdrop = arguments.contains("--backdrop")
+            PanelPreviewRun.run(options)
             return
         }
         if arguments.contains("--bench") {

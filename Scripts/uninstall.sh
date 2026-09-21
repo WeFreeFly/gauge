@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
 # Removes Gauge and everything it wrote.
 #
 # Double-clickable from the disk image, so it explains itself and waits for a

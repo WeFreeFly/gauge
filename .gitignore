@@ -2,6 +2,10 @@
 .swiftpm/
 *.xcodeproj
 build/
-Gauge.app/
 DerivedData/
 .DS_Store
+
+# Installers land in package/ so they are easy to find and get synced with the
+# rest of the folder, but a 1.2 MB binary per build has no place in history.
+package/*.dmg
+package/*.pkg

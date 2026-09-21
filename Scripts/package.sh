@@ -11,8 +11,12 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRATCH="${GAUGE_SCRATCH:-$HOME/.cache/gauge-build}"
-OUTPUT_DIR="${GAUGE_OUTPUT:-$SCRATCH/out}"
-APP="$OUTPUT_DIR/Gauge.app"
+# The built app stays in the cache — it is rewritten on every build and there
+# is no reason to sync ten megabytes of it. The finished installers land in
+# the project so they are somewhere findable.
+APP_OUTPUT="${GAUGE_OUTPUT:-$SCRATCH/out}"
+OUTPUT_DIR="${GAUGE_PACKAGE_OUTPUT:-$PROJECT_DIR/package}"
+APP="$APP_OUTPUT/Gauge.app"
 WHAT="${1:-all}"
 
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
@@ -31,6 +35,7 @@ BUILT_WITH="Built with Claude Code"
 echo "▸ Gauge $VERSION (build $BUILD)"
 
 "$PROJECT_DIR/build.sh" release
+mkdir -p "$OUTPUT_DIR"
 
 [ -d "$APP" ] || { echo "✗ No app at $APP"; exit 1; }
 
@@ -229,3 +234,5 @@ echo "Neither is signed with a Developer ID, so the first launch needs"
 echo "right-click → Open. That is the only difference from a paid-signed build."
 echo
 echo "  open '$OUTPUT_DIR'"
+echo
+echo "The app bundle itself stays in $APP_OUTPUT."

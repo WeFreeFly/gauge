@@ -104,8 +104,8 @@ Layout เดินตามโครงเดียวกับ iStat Menus: �
 ## ติดตั้ง
 
 ```bash
-./Scripts/package.sh          # build + สร้าง .dmg และ .pkg พร้อมตรวจสอบผลลัพธ์
-open ~/.cache/gauge-build/out # เปิดโฟลเดอร์ที่ได้ไฟล์
+./Scripts/package.sh   # build + สร้าง .dmg และ .pkg พร้อมตรวจสอบผลลัพธ์
+open package/          # ไฟล์ติดตั้งอยู่ในโฟลเดอร์ package/ ของโปรเจกต์
 ```
 
 ได้ 2 แบบให้เลือก:
@@ -146,9 +146,12 @@ open ~/.cache/gauge-build/out/Gauge.app     # ลองใช้
 
 ต้องมีแค่ **Command Line Tools** (`xcode-select --install`) ไม่ต้องลง Xcode เต็ม
 
-> ผลลัพธ์ build ออกไปไว้ที่ `~/.cache/gauge-build/` ไม่ได้อยู่ในโฟลเดอร์โปรเจกต์
-> เพราะโปรเจกต์อยู่ใน OneDrive — ถ้าเขียนไบนารี 10 MB ทับทุกครั้งที่ build
-> ตัว sync จะทำงานหนักโดยเปล่าประโยชน์ (เปลี่ยนที่ได้ด้วย `GAUGE_OUTPUT=...`)
+> **ไฟล์ติดตั้ง** (`.dmg` / `.pkg`) อยู่ที่ `package/` ในโปรเจกต์ — หาง่ายและ sync ไปกับ OneDrive
+> ด้วย แต่ไม่ถูกเก็บลง git (ดู `.gitignore`)
+>
+> **ตัว `.app` ที่ build ระหว่างทาง** ไปอยู่ที่ `~/.cache/gauge-build/out/` แทน เพราะมันถูกเขียนทับ
+> ทุกครั้งที่ build ถ้าวางไว้ใน OneDrive ตัว sync จะทำงานหนักเปล่า ๆ
+> (เปลี่ยนที่ได้ด้วย `GAUGE_OUTPUT=...` และ `GAUGE_PACKAGE_OUTPUT=...`)
 
 ### คำสั่งอื่น
 

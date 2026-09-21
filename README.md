@@ -101,16 +101,51 @@ Layout เดินตามโครงเดียวกับ iStat Menus: �
 ## ติดตั้ง
 
 ```bash
+./Scripts/package.sh          # build + สร้าง .dmg และ .pkg พร้อมตรวจสอบผลลัพธ์
+open ~/.cache/gauge-build/out # เปิดโฟลเดอร์ที่ได้ไฟล์
+```
+
+ได้ 2 แบบให้เลือก:
+
+| ไฟล์ | วิธีใช้ |
+|---|---|
+| **`Gauge-1.0.dmg`** | ดับเบิลคลิก แล้วลาก Gauge ไปใส่ Applications (มีไอคอน Applications ให้ในหน้าต่างเลย) พร้อมไฟล์ `Read me first.txt` และ `Uninstall Gauge.command` |
+| **`Gauge-1.0.pkg`** | ดับเบิลคลิกแล้วกด Next ไปเรื่อย ๆ — ติดตั้งลง `/Applications` ปิดตัวเก่าให้ก่อนและเปิดตัวใหม่ให้อัตโนมัติเมื่อเสร็จ |
+
+สร้างแยกได้: `./Scripts/package.sh dmg` หรือ `./Scripts/package.sh pkg`
+
+### ⚠️ ครั้งแรกที่เปิดต้อง right-click → Open
+
+แอปเซ็นแบบ **ad-hoc** ไม่ได้เซ็นด้วย Developer ID (ต้องสมัคร Apple Developer Program ปีละ $99)
+macOS จึงบล็อกการดับเบิลคลิกครั้งแรก วิธีผ่าน:
+
+1. เปิด Applications
+2. **คลิกขวา** (หรือ Control-click) ที่ Gauge → **Open**
+3. กด Open ยืนยันอีกครั้ง
+
+macOS จะจำไว้ ครั้งต่อไปเปิดปกติ ถ้ายังไม่ยอมให้สั่ง:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Gauge.app
+```
+
+### ถอนการติดตั้ง
+
+`Uninstall Gauge.command` ในไฟล์ DMG หรือ `./Scripts/uninstall.sh` — จะถามยืนยันก่อน แล้วลบ
+ตัวแอป, preferences, ไฟล์ history, cache, keychain item ของ AccuWeather key และ login item
+
+### build อย่างเดียว ไม่เอา installer
+
+```bash
 ./build.sh                                  # build + ประกอบ .app + เซ็นแบบ ad-hoc
 open ~/.cache/gauge-build/out/Gauge.app     # ลองใช้
-cp -R ~/.cache/gauge-build/out/Gauge.app /Applications/   # ติดตั้งจริง
 ```
+
+ต้องมีแค่ **Command Line Tools** (`xcode-select --install`) ไม่ต้องลง Xcode เต็ม
 
 > ผลลัพธ์ build ออกไปไว้ที่ `~/.cache/gauge-build/` ไม่ได้อยู่ในโฟลเดอร์โปรเจกต์
 > เพราะโปรเจกต์อยู่ใน OneDrive — ถ้าเขียนไบนารี 10 MB ทับทุกครั้งที่ build
 > ตัว sync จะทำงานหนักโดยเปล่าประโยชน์ (เปลี่ยนที่ได้ด้วย `GAUGE_OUTPUT=...`)
-
-ต้องมีแค่ **Command Line Tools** (`xcode-select --install`) ไม่ต้องลง Xcode เต็ม
 
 ### คำสั่งอื่น
 

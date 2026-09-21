@@ -132,6 +132,21 @@ macOS จะจำไว้ ครั้งต่อไปเปิดปกต�
 xattr -dr com.apple.quarantine /Applications/Gauge.app
 ```
 
+### ถ้าเคยติดตั้งเวอร์ชันก่อนหน้าแล้วเห็น Gauge 2 ไอคอน
+
+เกิดจากตอนเปลี่ยน bundle id: installer เห็นว่า `/Applications/Gauge.app` เป็นคนละ identifier
+เลยไม่ยอมทับ แล้ว **relocate** ตัวใหม่ไปไว้ที่ `/Applications/Gauge.localized/Gauge.app` แทน
+
+แก้แล้วในแพ็กเกจปัจจุบัน 2 ชั้น:
+
+1. `preinstall` ลบ `/Applications/Gauge.app`, `/Applications/Gauge.localized` และ forget receipt เก่า
+   ก่อนวางไฟล์ใหม่
+2. ตั้ง `BundleIsRelocatable = false` — installer จะวางตรงที่ payload บอกเสมอ ไม่ย้ายเอง
+   (สคริปต์ตรวจ `relocatable="false"` กับ `<relocate/>` ว่าง หลัง build ทุกครั้ง)
+
+**ถ้าเครื่องยังมี 2 ไอคอนอยู่** ให้รัน `.pkg` ตัวใหม่ 1 ครั้ง มันจะเก็บกวาดให้เอง
+(หรือถ้าจะลบมือ: `sudo rm -rf /Applications/Gauge.localized`)
+
 ### ถอนการติดตั้ง
 
 `Uninstall Gauge.command` ในไฟล์ DMG หรือ `./Scripts/uninstall.sh` — จะถามยืนยันก่อน แล้วลบ

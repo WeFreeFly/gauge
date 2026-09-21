@@ -6,6 +6,9 @@
 set -uo pipefail
 
 APP="/Applications/Gauge.app"
+# An install of the renamed package over the old one was relocated here by
+# PackageKit rather than replacing it; clean that up as well.
+RELOCATED="/Applications/Gauge.localized"
 # Builds before 1.0 used com.gauge.app; clean both up.
 LEGACY_ID="com.gauge.app"
 BUNDLE_ID="com.thaisimply.gauge"
@@ -19,7 +22,8 @@ SAVED="$HOME/Library/Saved Application State/$BUNDLE_ID.savedState"
 
 echo "This removes Gauge and its settings:"
 echo
-for path in "$APP" "$PREFS" "$LEGACY_PREFS" "$SUPPORT" "$CACHES" "$LEGACY_CACHES" "$STATE" "$SAVED"; do
+for path in "$APP" "$RELOCATED" "$PREFS" "$LEGACY_PREFS" "$SUPPORT" "$CACHES" \
+            "$LEGACY_CACHES" "$STATE" "$SAVED"; do
   [ -e "$path" ] && echo "  $path"
 done
 echo "  the AccuWeather key in your login keychain, if you added one"
@@ -40,10 +44,16 @@ echo "▸ Removing the login item…"
 osascript -e 'tell application "System Events" to delete login item "Gauge"' 2>/dev/null
 
 echo "▸ Removing files…"
-for path in "$APP" "$PREFS" "$LEGACY_PREFS" "$SUPPORT" "$CACHES" "$LEGACY_CACHES" "$STATE" "$SAVED"; do
+for path in "$APP" "$RELOCATED" "$PREFS" "$LEGACY_PREFS" "$SUPPORT" "$CACHES" \
+            "$LEGACY_CACHES" "$STATE" "$SAVED"; do
   if [ -e "$path" ]; then
     rm -rf "$path" 2>/dev/null || sudo rm -rf "$path"
   fi
+done
+
+echo "▸ Forgetting installer receipts…"
+for receipt in "$BUNDLE_ID" "$LEGACY_ID"; do
+  pkgutil --pkgs | grep -qx "$receipt" && sudo pkgutil --forget "$receipt" >/dev/null 2>&1
 done
 
 echo "▸ Removing the keychain item…"

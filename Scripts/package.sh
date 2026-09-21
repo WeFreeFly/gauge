@@ -125,6 +125,22 @@ verify_pkg() {
   expanded="$(mktemp -d)/expanded"
   echo "  verifying…"
   pkgutil --expand-full "$pkg" "$expanded" >/dev/null 2>&1
+  # The payload must name exactly one install path, and it must be the one we
+  # expect — a relocated bundle is how the duplicate-icon problem showed up.
+  local paths
+  paths="$(pkgutil --payload-files "$pkg" 2>/dev/null | grep -c "^./Applications/Gauge.app$")"
+  if [ "$paths" != "1" ]; then
+    echo "  ✗ payload does not install to /Applications/Gauge.app"
+    exit 1
+  fi
+  # A relocatable bundle is installed wherever the system thinks a copy
+  # already lives. PackageInfo says so two ways; both are checked.
+  local info="$expanded/component.pkg/PackageInfo"
+  grep -q 'relocatable="false"' "$info" \
+    || { echo "  ✗ the package is still marked relocatable"; exit 1; }
+  grep -q "<relocate/>" "$info" \
+    || { echo "  ✗ the package still lists a bundle to relocate"; exit 1; }
+
   local app
   app="$(find "$expanded" -maxdepth 4 -name "Gauge.app" -type d | head -1)"
   if [ -z "$app" ]; then
@@ -150,11 +166,27 @@ make_pkg() {
   mkdir -p "$root/Applications"
   cp -R "$APP" "$root/Applications/"
 
-  # An install over a running copy leaves the old process holding a deleted
-  # bundle, so it is stopped first and started again afterwards.
+  # Two jobs before the payload lands:
+  #
+  #   1. Stop a running copy, or the old process ends up holding a deleted
+  #      bundle.
+  #   2. Remove anything already installed. Gauge shipped briefly under the
+  #      identifier com.gauge.app, and PackageKit refuses to overwrite a
+  #      bundle whose identifier does not match the package — it relocates the
+  #      new one into /Applications/Gauge.localized/Gauge.app instead, leaving
+  #      two Gauge icons. Clearing the old copy and its receipt first means the
+  #      payload installs exactly where it says.
   cat > "$scripts/preinstall" <<'PRE'
 #!/bin/bash
 pkill -x Gauge 2>/dev/null || true
+sleep 1
+
+rm -rf "/Applications/Gauge.app" 2>/dev/null || true
+rm -rf "/Applications/Gauge.localized" 2>/dev/null || true
+
+for receipt in com.gauge.app; do
+  pkgutil --pkgs | grep -qx "$receipt" && pkgutil --forget "$receipt" >/dev/null 2>&1
+done
 exit 0
 PRE
 
@@ -170,12 +202,23 @@ POST
 
   chmod +x "$scripts/preinstall" "$scripts/postinstall"
 
+  # Without this the bundle is marked relocatable, and the installer will put
+  # it wherever it thinks an existing copy lives rather than where the payload
+  # says. That is what produced Gauge.localized.
+  local components
+  components="$(mktemp -d)/components.plist"
+  pkgbuild --analyze --root "$root" "$components" >/dev/null
+  /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$components" >/dev/null 2>&1 \
+    || /usr/libexec/PlistBuddy -c "Add :0:BundleIsRelocatable bool false" "$components" >/dev/null 2>&1
+
   pkgbuild --root "$root" \
            --identifier "$IDENTIFIER" \
            --version "$VERSION" \
            --scripts "$scripts" \
+           --component-plist "$components" \
            --install-location / \
            "$component" >/dev/null
+  rm -rf "$(dirname "$components")"
 
   # A distribution package is what gives the installer a title and a
   # readable welcome pane instead of a bare component install.

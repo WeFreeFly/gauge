@@ -90,13 +90,39 @@ struct GeneralSettings: View {
             Text("Faster sampling costs a little CPU of its own. Two seconds is a good balance.")
                 .settingsFootnote()
 
-            LabeledContent("Keep history for") {
+            LabeledContent("Menu bar graph window") {
                 Picker("", selection: $settings.historyMinutes) {
                     ForEach([5, 10, 30, 60], id: \.self) { Text("\($0) min").tag($0) }
                 }
                 .labelsHidden()
                 .frame(width: 110)
             }
+            Text("How much history the small graphs in the menu bar show.")
+                .settingsFootnote()
+        }
+
+        SettingsGroup("Chart history") {
+            LabeledContent("Default range") {
+                Picker("", selection: $settings.defaultChartRange) {
+                    ForEach(HistoryRange.allCases) { Text($0.title).tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 140)
+            }
+            Text("Each graph has its own range menu next to its title; this is what "
+               + "they use until one is chosen. Ranges beyond an hour come from history "
+               + "kept on disk, so they fill in as the app keeps running.")
+                .settingsFootnote()
+
+            HStack {
+                Button("Reset every graph to the default") { settings.resetChartRanges() }
+                    .controlSize(.small)
+                Spacer()
+            }
+
+            Text("Stored at three resolutions: two seconds for the last hour, one minute "
+               + "for a day, fifteen minutes out to four weeks — about 2.5 MB in total.")
+                .settingsFootnote()
         }
 
         SettingsGroup("Units") {

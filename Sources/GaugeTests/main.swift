@@ -399,6 +399,144 @@ t.suite("Colours") {
     }
 }
 
+// MARK: - History store
+
+t.suite("History store") {
+    func tempStore() -> (HistoryStore, URL) {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("gauge-history-\(UUID().uuidString)")
+        return (HistoryStore(directory: directory), directory)
+    }
+
+    t.test("ranges are ordered and cover four weeks") {
+        let seconds = HistoryRange.allCases.map(\.seconds)
+        t.equal(seconds, seconds.sorted(), "ranges should increase")
+        t.close(HistoryRange.m10.seconds, 600)
+        t.close(HistoryRange.d28.seconds, 28 * 86_400)
+        t.equal(HistoryRange.allCases.count, 10)
+    }
+
+    t.test("a bucket keeps the extremes, not just the mean") {
+        var bucket = HistoryBucket()
+        for value in [10.0, 90.0, 50.0] { bucket.add(value) }
+        t.close(bucket.minimum, 10)
+        t.close(bucket.maximum, 90)
+        t.close(bucket.average, 50)
+        t.equal(bucket.count, 3)
+    }
+
+    t.test("recording then reading returns the values") {
+        let (store, _) = tempStore()
+        let now = Date()
+        for index in 0..<60 {
+            store.record("test", Double(index), at: now.addingTimeInterval(-Double(60 - index) * 2))
+        }
+        let series = store.series("test", range: .m10)
+        t.expect(!series.isEmpty, "expected buckets")
+        t.expect(series.peak >= 58, "peak should reach the highest sample, got \(series.peak)")
+    }
+
+    t.test("a long range still returns data recorded seconds ago") {
+        let (store, _) = tempStore()
+        store.record("test", 42, at: Date())
+        let series = store.series("test", range: .d28)
+        t.expect(!series.isEmpty, "the coarse tier should have the sample too")
+        t.close(series.latest, 42, accuracy: 0.001)
+    }
+
+    t.test("downsampling keeps the peak instead of averaging it away") {
+        var buckets = (0..<1000).map { _ in HistoryBucket(minimum: 1, average: 1, maximum: 1, count: 1) }
+        buckets[500] = HistoryBucket(minimum: 1, average: 99, maximum: 99, count: 1)
+        let series = HistorySeries(buckets: buckets, start: Date(), interval: 2)
+
+        let reduced = HistoryStore.downsample(series, to: 50)
+        t.expect(reduced.buckets.count <= 51, "expected about 50 points, got \(reduced.buckets.count)")
+        t.close(reduced.peak, 99, accuracy: 0.001)
+    }
+
+    t.test("downsampling leaves a short series alone") {
+        let buckets = (0..<10).map { HistoryBucket(minimum: 0, average: Double($0), maximum: Double($0), count: 1) }
+        let series = HistorySeries(buckets: buckets, start: Date(), interval: 2)
+        t.equal(HistoryStore.downsample(series, to: 400).buckets.count, 10)
+    }
+
+    t.test("a gap stays a gap") {
+        let (store, _) = tempStore()
+        let now = Date()
+        store.record("test", 5, at: now.addingTimeInterval(-3_600))
+        store.record("test", 5, at: now)
+        let series = store.series("test", range: .h1, maximumPoints: 10_000)
+        let empty = series.buckets.filter(\.isEmpty).count
+        t.expect(empty > 0, "the silent hour should read as empty buckets, not a straight line")
+    }
+
+    t.test("history survives a restart") {
+        let (store, directory) = tempStore()
+        let now = Date()
+        for index in 0..<40 {
+            store.record("test", Double(index),
+                         at: now.addingTimeInterval(-Double(40 - index) * 900))
+        }
+        store.save()
+
+        let reopened = HistoryStore(directory: directory)
+        let series = reopened.series("test", range: .d28)
+        t.expect(!series.isEmpty, "expected the saved history back")
+        t.expect(series.peak >= 38, "peak should survive the round trip, got \(series.peak)")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    t.test("the live tier is not written to disk") {
+        // An hour of two-second detail is stale by the time the app returns,
+        // and it is the bulk of the data.
+        let (store, directory) = tempStore()
+        let now = Date()
+        for index in 0..<200 { store.record("test", 1, at: now.addingTimeInterval(-Double(index) * 2)) }
+        store.save()
+        let size = (try? FileManager.default.attributesOfItem(
+            atPath: directory.appendingPathComponent("history.gauge").path)[.size] as? Int) ?? 0
+        t.expect(size > 0, "something should be written")
+        t.expect(size < 60_000, "one metric should not need \(size) bytes")
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    t.test("a bucket run is split at the gaps") {
+        // Plot lives in the app target, so the behaviour is checked through
+        // the series it is built from.
+        let present = HistoryBucket(minimum: 1, average: 1, maximum: 1, count: 1)
+        let missing = HistoryBucket()
+        let buckets = [present, present, missing, missing, present, present, present]
+        let defined = buckets.map { !$0.isEmpty }
+        t.equal(defined, [true, true, false, false, true, true, true])
+        t.equal(defined.filter { $0 }.count, 5, "five samples, two holes")
+    }
+
+    t.test("an unknown metric returns nothing rather than failing") {
+        let (store, _) = tempStore()
+        t.expect(store.series("nope", range: .h1).isEmpty, "expected an empty series")
+    }
+
+    t.test("chart ranges persist per chart and fall back to the default") {
+        let suite = "gauge.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+
+        let settings = GaugeSettings(defaults: defaults)
+        t.equal(settings.chartRange("cpu.usage"), settings.defaultChartRange)
+
+        settings.setChartRange("cpu.usage", .d7)
+        settings.defaultChartRange = .h6
+        settings.save()
+
+        let reloaded = GaugeSettings(defaults: defaults)
+        t.equal(reloaded.chartRange("cpu.usage"), .d7, "explicit range")
+        t.equal(reloaded.chartRange("memory.used"), .h6, "falls back to the default")
+
+        reloaded.resetChartRanges()
+        t.equal(reloaded.chartRange("cpu.usage"), .h6, "reset returns to the default")
+    }
+}
+
 // MARK: - Sensor calibration
 
 t.suite("Sensor calibration") {

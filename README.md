@@ -45,6 +45,35 @@ Layout เดินตามโครงเดียวกับ iStat Menus: �
 
 รายการ process มีไอคอนแอปจริงและแถบจัดอันดับตามสัดส่วนการใช้งาน
 
+### เลื่อนเมาส์ดูย้อนหลัง และเลือกช่วงเวลา
+
+ทุกกราฟประวัติ:
+
+- **เอาเมาส์ชี้** จะขึ้นเส้น crosshair พร้อมกล่องบอก **เวลาที่จุดนั้น** (เช่น `10:39:42 · 43m ago`)
+  และ**ค่าของทุกเส้น** ณ จุดนั้น ถ้าช่วงนั้นไม่มีข้อมูลจะบอกว่า `no data` ไม่ใช่เดาค่าให้
+- **dropdown ข้างชื่อกราฟ** เลือกช่วงเวลาได้ 10 แบบ:
+  `10 นาที · 1 · 3 · 6 · 12 ชั่วโมง · 1 · 3 · 7 · 14 · 28 วัน`
+  แต่ละกราฟจำค่าของตัวเองแยกกัน (กราฟ CPU ดู 1 ชม. ขณะที่ load average ดู 7 วันได้)
+  ตั้งค่าเริ่มต้นรวมได้ที่ Settings → General → Chart history
+
+### ประวัติเก็บยังไงถึงย้อนได้ 28 วัน
+
+ถ้าเก็บดิบทุก 2 วินาที 28 วันคือ 1.2 ล้านจุดต่อ metric — เก็บไม่ไหว จึงเก็บเป็น **3 ชั้น**
+โดยแต่ละ bucket เก็บทั้ง **ต่ำสุด / เฉลี่ย / สูงสุด** (ไม่งั้น spike สั้น ๆ จะหายไปตอนซูมออก)
+
+| ชั้น | ความละเอียด | ครอบคลุม | ใช้กับช่วง |
+|---|---|---|---|
+| live | 2 วินาที | 1 ชั่วโมง | 10m, 1h |
+| minute | 1 นาที | 25 ชั่วโมง | 3h, 6h, 12h, 1d |
+| quarter | 15 นาที | 28 วัน | 3d, 7d, 14d, 28d |
+
+- รวมทุก metric ประมาณ **2.5 MB** ใน RAM
+- ชั้น minute กับ quarter **เซฟลงดิสก์** ที่ `~/Library/Application Support/Gauge/history.gauge`
+  ทุก 1 นาทีและตอนปิดแอป ช่วงเวลาระดับวัน/สัปดาห์จึงยังอยู่หลังรีสตาร์ต
+  (ชั้น live ไม่เซฟ — ข้อมูล 2 วินาทีเมื่อชั่วโมงก่อนไม่มีประโยชน์แล้ว)
+- **ช่วงที่ไม่มีข้อมูล** (เครื่อง sleep หรือปิดแอป) จะเว้นว่างในกราฟ ไม่ลากเส้นผ่านศูนย์
+- ต้นทุนการบันทึก **0.01 ms ต่อรอบ** สำหรับ 28 metrics (วัดด้วย `--bench`)
+
 **ปรับได้ที่ Settings → Appearance** (หรือในหน้าของแต่ละ module)
 
 - **สีหลัก / สีรอง** ของกราฟแต่ละ module เลือกเองได้ผ่าน colour picker
@@ -72,10 +101,14 @@ Layout เดินตามโครงเดียวกับ iStat Menus: �
 ## ติดตั้ง
 
 ```bash
-./build.sh                      # build + ประกอบ .app + เซ็นแบบ ad-hoc
-open build/Gauge.app            # ลองใช้
-cp -R build/Gauge.app /Applications/   # ติดตั้งจริง
+./build.sh                                  # build + ประกอบ .app + เซ็นแบบ ad-hoc
+open ~/.cache/gauge-build/out/Gauge.app     # ลองใช้
+cp -R ~/.cache/gauge-build/out/Gauge.app /Applications/   # ติดตั้งจริง
 ```
+
+> ผลลัพธ์ build ออกไปไว้ที่ `~/.cache/gauge-build/` ไม่ได้อยู่ในโฟลเดอร์โปรเจกต์
+> เพราะโปรเจกต์อยู่ใน OneDrive — ถ้าเขียนไบนารี 10 MB ทับทุกครั้งที่ build
+> ตัว sync จะทำงานหนักโดยเปล่าประโยชน์ (เปลี่ยนที่ได้ด้วย `GAUGE_OUTPUT=...`)
 
 ต้องมีแค่ **Command Line Tools** (`xcode-select --install`) ไม่ต้องลง Xcode เต็ม
 
@@ -83,12 +116,14 @@ cp -R build/Gauge.app /Applications/   # ติดตั้งจริง
 
 ```bash
 swift run GaugeTests                       # ชุดทดสอบ
-build/Gauge.app/Contents/MacOS/Gauge --dump      # พิมพ์ค่าที่อ่านได้ทั้งหมดหนึ่งรอบ
-build/Gauge.app/Contents/MacOS/Gauge --preview ./out --demo  # render ทุก panel/menubar เป็น PNG
-build/Gauge.app/Contents/MacOS/Gauge --weather "Bangkok"  # ทดสอบ weather provider
-build/Gauge.app/Contents/MacOS/Gauge --bench       # จับเวลาการอ่านค่าแต่ละตัว
-build/Gauge.app/Contents/MacOS/Gauge --map-sensors --save  # calibrate เซ็นเซอร์จาก CLI (~2 นาที)
-build/Gauge.app/Contents/MacOS/Gauge --panel cpu 20        # เปิด dropdown จริงบนจอ 20 วินาที
+APP=~/.cache/gauge-build/out/Gauge.app/Contents/MacOS/Gauge
+$APP --dump      # พิมพ์ค่าที่อ่านได้ทั้งหมดหนึ่งรอบ
+$APP --preview ./out --demo        # render ทุก panel/menubar เป็น PNG
+$APP --weather "Bangkok"           # ทดสอบ weather provider
+$APP --bench                       # จับเวลาการอ่านค่าแต่ละตัว
+$APP --history-stats               # ดูว่าแต่ละช่วงเวลามีข้อมูลกี่จุด
+$APP --map-sensors --save          # calibrate เซ็นเซอร์จาก CLI (~2 นาที)
+$APP --panel cpu 20                # เปิด dropdown จริงบนจอ 20 วินาที
 swift Scripts/make-icon.swift              # สร้างไอคอนใหม่
 ```
 

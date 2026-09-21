@@ -73,6 +73,10 @@ struct GaugeApp {
             PanelPreviewRun.run(module: ModuleID(rawValue: name) ?? .cpu, seconds: seconds)
             return
         }
+        if arguments.contains("--history-stats") {
+            HistoryStats.run(demo: arguments.contains("--demo"))
+            return
+        }
         if arguments.contains("--bench") {
             Benchmark.run(iterations: 20)
             return

@@ -21,18 +21,19 @@ struct NetworkPanel: View {
                 readout("Upload", rate(network.uploadRate), "arrow.up", look.secondary)
             }
 
-            GraphSection(title: "Bandwidth",
-                         value: "↓ \(rate(network.downloadRate))  ↑ \(rate(network.uploadRate))",
-                         legend: [("Down", look.primary), ("Up", look.secondary)],
-                         caption: "peak \(rate(max(network.peakDownload, network.peakUpload)))") {
-                HistoryGraph(
-                    plots: [Plot(values: hub.series.networkDown, color: look.primary),
-                            Plot(values: hub.series.networkUp, color: look.secondary)],
-                    shape: look.shape,
-                    height: 62,
-                    appearance: look
-                )
-            }
+            MetricChart(
+                chart: "network.bandwidth",
+                title: "Bandwidth",
+                sources: [.init(metric: MonitorHub.Metric.networkDown, color: look.primary,
+                                label: "Down", format: { rate($0) }),
+                          .init(metric: MonitorHub.Metric.networkUp, color: look.secondary,
+                                label: "Up", format: { rate($0) })],
+                shape: look.shape,
+                autoScale: true,
+                height: 62,
+                appearance: look,
+                value: "↓ \(rate(network.downloadRate))  ↑ \(rate(network.uploadRate))"
+            )
 
             Divider()
 
@@ -172,34 +173,42 @@ struct SensorsPanel: View {
                 }
             }
 
-            if !hub.series.socTemperature.isEmpty {
-                GraphSection(title: "CPU die temperature",
-                             value: sensors.socTemperature.map {
-                                Format.temperature($0, unit: settings.temperatureUnit, decimals: 1)
-                             },
-                             caption: "0–100 °C") {
-                    VStack(spacing: 3) {
-                        HistoryGraph(
-                            plots: [Plot(values: hub.series.socTemperature, color: look.primary)],
-                            shape: look.shape == .stacked || look.shape == .mirrored ? .area : look.shape,
-                            ceiling: 100, height: 46, appearance: look
-                        )
-                        HeatStrip(values: hub.series.socTemperature)
-                    }
+            let temperatureRange = settings.chartRange("sensors.temperature")
+            let temperatureSeries = hub.series(MonitorHub.Metric.temperature, range: temperatureRange)
+            if !temperatureSeries.isEmpty {
+                VStack(spacing: 3) {
+                    MetricChart(
+                        chart: "sensors.temperature",
+                        title: "CPU die temperature",
+                        sources: [.init(metric: MonitorHub.Metric.temperature, color: look.primary,
+                                        label: "CPU die",
+                                        format: { Format.temperature($0, unit: settings.temperatureUnit,
+                                                                     decimals: 1) })],
+                        shape: look.shape == .stacked || look.shape == .mirrored ? .area : look.shape,
+                        ceiling: 100,
+                        height: 46,
+                        appearance: look,
+                        value: sensors.socTemperature.map {
+                            Format.temperature($0, unit: settings.temperatureUnit, decimals: 1)
+                        },
+                        caption: "0–100 °C"
+                    )
+                    HeatStrip(values: temperatureSeries.averages)
                 }
             }
 
-            if !hub.series.power.isEmpty {
-                GraphSection(title: "Power draw",
-                             value: sensors.systemPower.map(Format.power),
-                             caption: "peak \(Format.power(hub.series.power.max() ?? 0))") {
-                    HistoryGraph(
-                        plots: [Plot(values: hub.series.power, color: look.secondary)],
-                        shape: .columns,
-                        height: 32, appearance: look, gridLines: [0.5]
-                    )
-                }
-            }
+            MetricChart(
+                chart: "sensors.power",
+                title: "Power draw",
+                sources: [.init(metric: MonitorHub.Metric.power, color: look.secondary,
+                                label: "System", format: { Format.power($0) })],
+                shape: .columns,
+                autoScale: true,
+                height: 32,
+                appearance: look,
+                value: sensors.systemPower.map { Format.power($0) },
+                gridLines: [0.5]
+            )
 
             if !sensors.fans.isEmpty {
                 Divider()
@@ -302,16 +311,17 @@ struct BatteryPanel: View {
                         .foregroundStyle(.tertiary)
                 }
 
-                if hub.series.batteryCharge.count > 1 {
-                    GraphSection(title: "Charge",
-                                 value: "\(battery.chargePercent)%") {
-                        HistoryGraph(
-                            plots: [Plot(values: hub.series.batteryCharge, color: look.primary)],
-                            shape: look.shape == .stacked || look.shape == .mirrored ? .area : look.shape,
-                            ceiling: 1, height: 40, appearance: look
-                        )
-                    }
-                }
+                MetricChart(
+                    chart: "battery.charge",
+                    title: "Charge",
+                    sources: [.init(metric: MonitorHub.Metric.battery, color: look.primary,
+                                    label: "Charge", format: { Format.percent($0) })],
+                    shape: look.shape == .stacked || look.shape == .mirrored ? .area : look.shape,
+                    ceiling: 1,
+                    height: 40,
+                    appearance: look,
+                    value: "\(battery.chargePercent)%"
+                )
 
                 Divider()
 
@@ -458,21 +468,34 @@ struct CombinedPanel: View {
                 }
             }
 
-            GraphSection(title: "CPU",
-                         value: Format.percent(snapshot.cpu.total)) {
-                HistoryGraph(plots: [Plot(values: hub.series.cpu, color: settings.graph(.cpu).primary)],
-                             shape: .area, ceiling: 1, height: 34,
-                             appearance: settings.graph(.cpu), gridLines: [0.5])
-            }
+            MetricChart(
+                chart: "combined.cpu",
+                title: "CPU",
+                sources: [.init(metric: MonitorHub.Metric.cpu, color: settings.graph(.cpu).primary,
+                                label: "CPU", format: { Format.percent($0, decimals: 1) })],
+                shape: .area,
+                ceiling: 1,
+                height: 34,
+                appearance: settings.graph(.cpu),
+                value: Format.percent(snapshot.cpu.total),
+                gridLines: [0.5]
+            )
 
-            GraphSection(title: "Network",
-                         value: "↓ \(Format.rate(snapshot.network.downloadRate))  ↑ \(Format.rate(snapshot.network.uploadRate))",
-                         legend: [("Down", settings.graph(.network).primary),
-                                  ("Up", settings.graph(.network).secondary)]) {
-                HistoryGraph(plots: [Plot(values: hub.series.networkDown, color: settings.graph(.network).primary),
-                                     Plot(values: hub.series.networkUp, color: settings.graph(.network).secondary)],
-                             shape: .mirrored, height: 40, appearance: settings.graph(.network))
-            }
+            MetricChart(
+                chart: "combined.network",
+                title: "Network",
+                sources: [.init(metric: MonitorHub.Metric.networkDown,
+                                color: settings.graph(.network).primary,
+                                label: "Down", format: { Format.rate($0) }),
+                          .init(metric: MonitorHub.Metric.networkUp,
+                                color: settings.graph(.network).secondary,
+                                label: "Up", format: { Format.rate($0) })],
+                shape: .mirrored,
+                autoScale: true,
+                height: 40,
+                appearance: settings.graph(.network),
+                value: "↓ \(Format.rate(snapshot.network.downloadRate))  ↑ \(Format.rate(snapshot.network.uploadRate))"
+            )
 
             Divider()
 

@@ -9,8 +9,79 @@ struct Plot: Identifiable {
     var values: [Double]
     var color: Color
     var label: String = ""
+    /// How a value reads in the hover box. Defaults to a plain number, which
+    /// is wrong for bytes and percentages, so callers usually set it.
+    var format: (Double) -> String = { String(format: "%.1f", $0) }
+    /// False where no sample was recorded — the machine was asleep, or the app
+    /// was not running. Those points are left out instead of plotted as zero.
+    var defined: [Bool]?
 
     var latest: Double { values.last ?? 0 }
+
+    init(values: [Double], color: Color, label: String = "",
+         format: @escaping (Double) -> String = { String(format: "%.1f", $0) },
+         defined: [Bool]? = nil) {
+        self.values = values
+        self.color = color
+        self.label = label
+        self.format = format
+        self.defined = defined
+    }
+
+    func hasValue(at index: Int) -> Bool {
+        guard index >= 0, index < values.count else { return false }
+        guard let defined, index < defined.count else { return true }
+        return defined[index]
+    }
+
+    /// Runs of consecutive samples, so a gap breaks the line rather than
+    /// dragging it through zero.
+    var segments: [Range<Int>] {
+        guard let defined else { return values.isEmpty ? [] : [0..<values.count] }
+        var result: [Range<Int>] = []
+        var start: Int?
+        for index in values.indices {
+            let present = index < defined.count ? defined[index] : true
+            if present, start == nil { start = index }
+            if !present, let begin = start {
+                if index - begin > 1 { result.append(begin..<index) }
+                start = nil
+            }
+        }
+        if let begin = start, values.count - begin > 1 { result.append(begin..<values.count) }
+        return result
+    }
+}
+
+/// Where a chart's samples sit in time, so hovering can name the moment.
+struct ChartTimeline {
+    var start: Date
+    var interval: TimeInterval
+    var count: Int
+
+    func date(at index: Int) -> Date {
+        start.addingTimeInterval(interval * (Double(index) + 0.5))
+    }
+
+    /// "14:32" for anything inside a day, "Tue 14:32" beyond that.
+    func label(at index: Int) -> String {
+        let date = self.date(at: index)
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        let span = interval * Double(max(1, count))
+        formatter.dateFormat = span > 86_400 ? "d MMM HH:mm" : (span > 3_600 ? "HH:mm" : "HH:mm:ss")
+        return formatter.string(from: date)
+    }
+
+    /// How long ago that sample was, which is often what the reader wants.
+    func ago(at index: Int) -> String {
+        let seconds = Date().timeIntervalSince(date(at: index))
+        guard seconds > 1 else { return "now" }
+        if seconds < 90 { return "\(Int(seconds))s ago" }
+        if seconds < 5_400 { return "\(Int(seconds / 60))m ago" }
+        if seconds < 172_800 { return "\(Int(seconds / 3_600))h ago" }
+        return "\(Int(seconds / 86_400))d ago"
+    }
 }
 
 /// Maps a series onto a rect. Pulled out so every chart type agrees on how a
@@ -61,6 +132,12 @@ struct HistoryGraph: View {
     /// Horizontal rules behind the plot, as a fraction of the ceiling.
     var gridLines: [Double] = [0.25, 0.5, 0.75]
     var showsGrid = true
+    /// Supplying this turns on the hover crosshair and its readout.
+    var timeline: ChartTimeline?
+    /// Only used by `--preview`, which has no pointer to hover with.
+    var previewHover: CGPoint?
+
+    @StateObject private var hover = UIState<CGPoint?>(nil)
 
     private var style: GraphAppearance { appearance ?? GraphAppearance(primaryHex: "#0A84FF") }
     private var resolvedCeiling: Double { ceiling ?? autoCeiling(plots) }
@@ -86,6 +163,96 @@ struct HistoryGraph: View {
                 .fill(Color.primary.opacity(0.05))
         )
         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .overlay { crosshair }
+        .onAppear { if let previewHover { hover.value = previewHover } }
+        .onContinuousHover { phase in
+            guard timeline != nil else { return }
+            switch phase {
+            case .active(let location): hover.value = location
+            case .ended: hover.value = nil
+            }
+        }
+    }
+
+    // MARK: Hover
+
+    private var sampleCount: Int {
+        plots.map(\.values.count).max() ?? 0
+    }
+
+    /// A vertical rule, a dot on each series and a floating readout, drawn
+    /// only while the pointer is over the plot.
+    @ViewBuilder
+    private var crosshair: some View {
+        GeometryReader { geometry in
+            if let location = hover.value, let timeline, sampleCount > 1 {
+                let count = sampleCount
+                let step = geometry.size.width / CGFloat(count - 1)
+                let index = Int((location.x / max(step, 0.001)).rounded())
+                    .clamped(to: 0...(count - 1))
+                let x = step * CGFloat(index)
+
+                Path { path in
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: geometry.size.height))
+                }
+                .stroke(Color.primary.opacity(0.35), lineWidth: 1)
+
+                ForEach(plots) { plot in
+                    if plot.hasValue(at: index) {
+                        let fraction = ((plot.values[index] - floor) /
+                                        max(0.0001, resolvedCeiling - floor)).clamped(to: 0...1)
+                        Circle()
+                            .fill(plot.color)
+                            .frame(width: 5, height: 5)
+                            .position(x: x, y: geometry.size.height * (1 - fraction))
+                    }
+                }
+
+                readout(index: index, timeline: timeline, at: x, in: geometry.size)
+            }
+        }
+    }
+
+    private func readout(index: Int, timeline: ChartTimeline,
+                         at x: CGFloat, in size: CGSize) -> some View {
+        let box = VStack(alignment: .leading, spacing: 1) {
+            Text("\(timeline.label(at: index))  ·  \(timeline.ago(at: index))")
+                .font(.system(size: 8))
+                .foregroundStyle(.secondary)
+            ForEach(plots) { plot in
+                if index < plot.values.count {
+                    HStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(plot.color)
+                            .frame(width: 6, height: 6)
+                        if !plot.label.isEmpty {
+                            Text(plot.label)
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(plot.hasValue(at: index) ? plot.format(plot.values[index]) : "no data")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(plot.hasValue(at: index) ? .primary : .secondary)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(.regularMaterial)
+                .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+        )
+        .fixedSize()
+
+        // Keep the box inside the plot: flip it to the left near the right edge.
+        let width: CGFloat = 96
+        let alignsLeft = x < size.width - width - 8
+        return box
+            .offset(x: alignsLeft ? x + 8 : x - width - 8, y: 4)
+            .allowsHitTesting(false)
     }
 
     // MARK: Pieces
@@ -109,6 +276,7 @@ struct HistoryGraph: View {
             let step = size.width / CGFloat(plot.values.count)
             let width = max(1, step - 1)
             for (index, value) in plot.values.enumerated() {
+                guard plot.hasValue(at: index) else { continue }
                 let barHeight = scale.height(value)
                 guard barHeight > 0.5 else { continue }
                 let rect = CGRect(x: CGFloat(index) * step, y: size.height - barHeight,
@@ -118,15 +286,32 @@ struct HistoryGraph: View {
             return
         }
 
-        let line = linePath(plot.values, scale: scale)
+        let segments = plot.segments
+        guard !segments.isEmpty else { return }
+
         if shape == .area, style.fade != .outline {
-            var area = line
-            area.addLine(to: CGPoint(x: size.width, y: size.height))
-            area.addLine(to: CGPoint(x: 0, y: size.height))
-            area.closeSubpath()
+            var area = Path()
+            for segment in segments {
+                let count = plot.values.count
+                area.move(to: CGPoint(x: scale.point(segment.lowerBound, 0, count: count).x,
+                                      y: size.height))
+                for index in segment {
+                    area.addLine(to: scale.point(index, plot.values[index], count: count))
+                }
+                area.addLine(to: CGPoint(x: scale.point(segment.upperBound - 1, 0, count: count).x,
+                                         y: size.height))
+                area.closeSubpath()
+            }
             context.fill(area, with: fillShading(plot.color, size: size))
         }
         if style.showsLine || shape == .line {
+            var line = Path()
+            for segment in segments {
+                for (offset, index) in segment.enumerated() {
+                    let point = scale.point(index, plot.values[index], count: plot.values.count)
+                    offset == 0 ? line.move(to: point) : line.addLine(to: point)
+                }
+            }
             context.stroke(line, with: .color(plot.color), lineWidth: 1.4)
         }
     }
@@ -219,6 +404,8 @@ struct GraphSection<Trailing: View>: View {
     var valueColor: Color = .primary
     var legend: [(String, Color)] = []
     var caption: String?
+    /// Identifier for the range menu. Omit it and no menu is shown.
+    var chart: String?
     @ViewBuilder var graph: Trailing
 
     @EnvironmentObject private var settings: GaugeSettings
@@ -230,6 +417,7 @@ struct GraphSection<Trailing: View>: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
                     .kerning(0.5)
+                if let chart { RangeMenu(chart: chart) }
                 Spacer(minLength: 6)
                 if let value {
                     Text(value)
@@ -271,6 +459,126 @@ struct GraphSection<Trailing: View>: View {
 extension GraphSection where Trailing == EmptyView {
     init(title: String, value: String? = nil) {
         self.init(title: title, value: value, graph: { EmptyView() })
+    }
+}
+
+/// The time-range picker that sits next to a graph's title.
+struct RangeMenu: View {
+    let chart: String
+    @EnvironmentObject private var settings: GaugeSettings
+
+    var body: some View {
+        Menu {
+            ForEach(HistoryRange.allCases) { range in
+                Button {
+                    settings.setChartRange(chart, range)
+                } label: {
+                    if settings.chartRange(chart) == range {
+                        Label(range.title, systemImage: "checkmark")
+                    } else {
+                        Text(range.title)
+                    }
+                }
+            }
+            Divider()
+            Button("Use default (\(settings.defaultChartRange.short))") {
+                settings.chartRanges[chart] = nil
+            }
+        } label: {
+            // The borderless menu style draws its own indicator ahead of the
+            // label, so the label is just the range.
+            Text(settings.chartRange(chart).short)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .controlSize(.mini)
+        .fixedSize()
+        .help("Time range for this graph")
+    }
+}
+
+/// A history graph wired to the long-term store: it reads its own range from
+/// settings, fetches the matching resolution, and carries the timeline the
+/// hover readout needs.
+struct MetricChart: View {
+    struct Source {
+        var metric: String
+        var color: Color
+        var label: String = ""
+        var format: (Double) -> String = { String(format: "%.1f", $0) }
+    }
+
+    let chart: String
+    let title: String
+    var sources: [Source]
+    var shape: GraphShape = .area
+    var ceiling: Double?
+    var floorValue: Double = 0
+    /// Scale to the tallest sample in the window instead of a fixed ceiling.
+    var autoScale = false
+    var height: CGFloat = 56
+    var appearance: GraphAppearance
+    var value: String?
+    var valueColor: Color = .primary
+    var showsLegend = true
+    var caption: String?
+    var gridLines: [Double] = [0.25, 0.5, 0.75]
+
+    @EnvironmentObject private var hub: MonitorHub
+    @EnvironmentObject private var settings: GaugeSettings
+
+    var body: some View {
+        let range = settings.chartRange(chart)
+        let series = sources.map { hub.series($0.metric, range: range) }
+        let timeline = series.first.map {
+            ChartTimeline(start: $0.start, interval: $0.interval, count: $0.buckets.count)
+        }
+        let plots = zip(sources, series).map { source, data in
+            Plot(values: data.averages, color: source.color,
+                 label: source.label, format: source.format,
+                 defined: data.buckets.map { !$0.isEmpty })
+        }
+
+        GraphSection(
+            title: title,
+            value: value,
+            valueColor: valueColor,
+            legend: showsLegend && sources.count > 1
+                ? sources.map { ($0.label, $0.color) } : [],
+            caption: caption ?? peakCaption(series),
+            chart: chart
+        ) {
+            HistoryGraph(
+                plots: plots,
+                shape: shape,
+                ceiling: autoScale ? nil : ceiling,
+                floor: floorValue,
+                height: height,
+                appearance: appearance,
+                gridLines: gridLines,
+                timeline: timeline
+            )
+        }
+    }
+
+    /// The window's peak is the number people look for after the current
+    /// value. A stacked chart's peak is the tallest total, not the tallest
+    /// single band, which would read as far too low.
+    private func peakCaption(_ series: [HistorySeries]) -> String? {
+        guard let format = sources.first?.format else { return nil }
+
+        let peak: Double
+        if shape == .stacked, series.count > 1 {
+            let length = series.map(\.buckets.count).min() ?? 0
+            peak = (0..<length).reduce(0.0) { best, index in
+                max(best, series.reduce(0) { $0 + $1.buckets[index].maximum })
+            }
+        } else {
+            peak = series.map(\.peak).max() ?? 0
+        }
+        guard peak > 0 else { return nil }
+        return "peak \(format(peak))"
     }
 }
 

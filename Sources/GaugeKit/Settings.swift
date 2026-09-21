@@ -114,6 +114,10 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
     @Published public var updateInterval: TimeInterval { didSet { scheduleSave() } }
     @Published public var temperatureUnit: TemperatureUnit { didSet { scheduleSave() } }
     @Published public var historyMinutes: Int { didSet { scheduleSave() } }
+    /// Range each chart is showing, keyed by chart id. Charts fall back to
+    /// `defaultChartRange` until they are changed.
+    @Published public var chartRanges: [String: HistoryRange] { didSet { scheduleSave() } }
+    @Published public var defaultChartRange: HistoryRange { didSet { scheduleSave() } }
     @Published public var showPerCoreGraph: Bool { didSet { scheduleSave() } }
     @Published public var networkUnitBits: Bool { didSet { scheduleSave() } }
 
@@ -149,6 +153,8 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         var updateInterval: TimeInterval?
         var temperatureUnit: TemperatureUnit?
         var historyMinutes: Int?
+        var chartRanges: [String: HistoryRange]?
+        var defaultChartRange: HistoryRange?
         var showPerCoreGraph: Bool?
         var networkUnitBits: Bool?
         var publicIPEnabled: Bool?
@@ -191,6 +197,8 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         updateInterval = stored?.updateInterval ?? 2
         temperatureUnit = stored?.temperatureUnit ?? .celsius
         historyMinutes = stored?.historyMinutes ?? 10
+        chartRanges = stored?.chartRanges ?? [:]
+        defaultChartRange = stored?.defaultChartRange ?? .h1
         showPerCoreGraph = stored?.showPerCoreGraph ?? true
         networkUnitBits = stored?.networkUnitBits ?? false
         publicIPEnabled = stored?.publicIPEnabled ?? false
@@ -252,6 +260,19 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         modules[id] = value
     }
 
+    public func chartRange(_ chart: String) -> HistoryRange {
+        chartRanges[chart] ?? defaultChartRange
+    }
+
+    public func setChartRange(_ chart: String, _ range: HistoryRange) {
+        chartRanges[chart] = range
+    }
+
+    /// Puts every chart back on the default range.
+    public func resetChartRanges() {
+        chartRanges = [:]
+    }
+
     public func graph(_ id: ModuleID) -> GraphAppearance {
         graphs[id] ?? .standard(for: id)
     }
@@ -294,6 +315,8 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
             updateInterval: updateInterval,
             temperatureUnit: temperatureUnit,
             historyMinutes: historyMinutes,
+            chartRanges: chartRanges,
+            defaultChartRange: defaultChartRange,
             showPerCoreGraph: showPerCoreGraph,
             networkUnitBits: networkUnitBits,
             publicIPEnabled: publicIPEnabled,

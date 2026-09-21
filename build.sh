@@ -8,7 +8,11 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="${1:-release}"
 SCRATCH="${GAUGE_SCRATCH:-$HOME/.cache/gauge-build}"
-APP_DIR="$PROJECT_DIR/build/Gauge.app"
+# The app bundle goes outside the project as well. This tree sits in a synced
+# folder, and a ten-megabyte binary rewritten on every build keeps the sync
+# client busy for no reason. Override with GAUGE_OUTPUT.
+OUTPUT_DIR="${GAUGE_OUTPUT:-$SCRATCH/out}"
+APP_DIR="$OUTPUT_DIR/Gauge.app"
 
 echo "▸ Building ($CONFIG)…"
 swift build --package-path "$PROJECT_DIR" --scratch-path "$SCRATCH" -c "$CONFIG"
@@ -22,6 +26,7 @@ BINARY="$SCRATCH/$CONFIG/Gauge"
 [ -f "$BINARY" ] || { echo "✗ No binary at $BINARY"; exit 1; }
 
 echo "▸ Assembling bundle…"
+mkdir -p "$OUTPUT_DIR"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$BINARY" "$APP_DIR/Contents/MacOS/Gauge"

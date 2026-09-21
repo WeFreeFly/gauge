@@ -78,6 +78,15 @@ enum PreviewRenderer {
             }
         }
 
+        for (label, appearance) in appearances {
+            if let image = render(view: AnyView(
+                ChartGallery().environmentObject(hub).environmentObject(hub.settings)
+            ), appearance: appearance) {
+                write(image, to: directory.appendingPathComponent("charts-\(label).png"),
+                      background: backdrop(for: appearance))
+            }
+        }
+
         print("Wrote previews to \(directory.path)")
     }
 
@@ -87,6 +96,24 @@ enum PreviewRenderer {
             color = NSColor.windowBackgroundColor.usingColorSpace(.sRGB) ?? color
         }
         return color
+    }
+
+    /// Lays a SwiftUI view out offscreen and captures it.
+    private static func render(view: AnyView, appearance: NSAppearance) -> NSImage? {
+        let hosting = NSHostingView(rootView: view)
+        hosting.appearance = appearance
+        hosting.wantsLayer = true
+        hosting.layoutSubtreeIfNeeded()
+        var size = hosting.fittingSize
+        if size.width < 10 || size.height < 10 { size = NSSize(width: 380, height: 600) }
+        hosting.frame = NSRect(origin: .zero, size: size)
+        hosting.layoutSubtreeIfNeeded()
+
+        guard let representation = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return nil }
+        hosting.cacheDisplay(in: hosting.bounds, to: representation)
+        let image = NSImage(size: size)
+        image.addRepresentation(representation)
+        return image
     }
 
     private static func renderSettings(hub: MonitorHub, appearance: NSAppearance) -> NSImage? {

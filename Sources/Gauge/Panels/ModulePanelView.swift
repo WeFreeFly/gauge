@@ -80,47 +80,54 @@ struct CPUPanel: View {
                         (hub.efficiencyClusterName, Format.percent(cpu.efficiencyLoad)),
                       ])
 
-            GraphSection(title: "Usage",
-                         value: Format.percent(cpu.total),
-                         valueColor: look.valueColor(load: cpu.total),
-                         legend: look.shape == .stacked
-                             ? [("User", look.primary), ("System", look.secondary)] : []) {
-                HistoryGraph(
-                    plots: look.shape == .stacked
-                        ? [Plot(values: series.cpuUser, color: look.primary),
-                           Plot(values: series.cpuSystem, color: look.secondary)]
-                        : [Plot(values: series.cpu, color: look.primary)],
-                    shape: look.shape,
-                    ceiling: 1,
-                    height: 58,
-                    appearance: look
-                )
-            }
+            MetricChart(
+                chart: "cpu.usage",
+                title: "Usage",
+                sources: look.shape == .stacked
+                    ? [.init(metric: MonitorHub.Metric.cpuUser, color: look.primary,
+                             label: "User", format: { Format.percent($0, decimals: 1) }),
+                       .init(metric: MonitorHub.Metric.cpuSystem, color: look.secondary,
+                             label: "System", format: { Format.percent($0, decimals: 1) })]
+                    : [.init(metric: MonitorHub.Metric.cpu, color: look.primary,
+                             label: "CPU", format: { Format.percent($0, decimals: 1) })],
+                shape: look.shape,
+                ceiling: 1,
+                height: 58,
+                appearance: look,
+                value: Format.percent(cpu.total),
+                valueColor: look.valueColor(load: cpu.total)
+            )
 
             if settings.showPerCoreGraph, !cpu.cores.isEmpty {
+                let coreRange = settings.chartRange("cpu.cores")
+                let coreHistories = cpu.cores.map {
+                    hub.series(MonitorHub.Metric.core($0.id), range: coreRange, points: 120).averages
+                }
                 GraphSection(title: "Per core",
                              value: "\(cpu.cores.count) cores",
-                             caption: " ") {
+                             caption: " ",
+                             chart: "cpu.cores") {
                     CoreHistoryGrid(cores: cpu.cores,
-                                    histories: series.perCore,
+                                    histories: coreHistories,
                                     columns: cpu.cores.count > 8 ? 5 : 4) { core in
                         core.kind == .efficiency ? Color.teal : look.primary
                     }
                 }
             }
 
-            GraphSection(title: "Load average",
-                         value: String(format: "%.2f", cpu.loadAverage.one),
-                         caption: "peak \(String(format: "%.1f", series.loadAverage.max() ?? 0))") {
-                HistoryGraph(
-                    plots: [Plot(values: series.loadAverage, color: look.secondary)],
-                    shape: look.shape == .stacked ? .area : look.shape,
-                    ceiling: max(Double(hub.hardware.coreCount), series.loadAverage.max() ?? 1),
-                    height: 34,
-                    appearance: look,
-                    gridLines: [0.5]
-                )
-            }
+            MetricChart(
+                chart: "cpu.load",
+                title: "Load average",
+                sources: [.init(metric: MonitorHub.Metric.load, color: look.secondary,
+                                label: "Load", format: { String(format: "%.2f", $0) })],
+                shape: look.shape == .stacked ? .area : look.shape,
+                ceiling: Double(hub.hardware.coreCount),
+                autoScale: true,
+                height: 34,
+                appearance: look,
+                value: String(format: "%.2f", cpu.loadAverage.one),
+                gridLines: [0.5]
+            )
 
             Divider()
 
@@ -174,13 +181,18 @@ struct GPUPanel: View {
                     }
                 }
 
-                GraphSection(title: "Utilisation",
-                             value: Format.percent(gpu.utilization),
-                             valueColor: look.valueColor(load: gpu.utilization)) {
-                    HistoryGraph(plots: [Plot(values: hub.series.gpu, color: look.primary)],
-                                 shape: look.shape == .stacked ? .area : look.shape,
-                                 ceiling: 1, height: 52, appearance: look)
-                }
+                MetricChart(
+                    chart: "gpu.utilisation",
+                    title: "Utilisation",
+                    sources: [.init(metric: MonitorHub.Metric.gpu, color: look.primary,
+                                    label: "GPU", format: { Format.percent($0, decimals: 1) })],
+                    shape: look.shape == .stacked ? .area : look.shape,
+                    ceiling: 1,
+                    height: 52,
+                    appearance: look,
+                    value: Format.percent(gpu.utilization),
+                    valueColor: look.valueColor(load: gpu.utilization)
+                )
 
                 Divider()
 
@@ -237,37 +249,40 @@ struct MemoryPanel: View {
                 .init(value: memory.cachedFiles, color: Color.primary.opacity(0.22), label: "Cached"),
             ], total: memory.total)
 
-            GraphSection(title: "Memory used",
-                         value: Format.percent(memory.usedFraction),
-                         legend: look.shape == .stacked
-                             ? [("App", look.primary), ("Wired", look.secondary),
-                                ("Compressed", compressedColor)] : []) {
-                HistoryGraph(
-                    plots: look.shape == .stacked
-                        ? [Plot(values: series.memoryApp, color: look.primary),
-                           Plot(values: series.memoryWired, color: look.secondary),
-                           Plot(values: series.memoryCompressed, color: compressedColor)]
-                        : [Plot(values: series.memory, color: look.primary)],
-                    shape: look.shape,
-                    ceiling: look.shape == .stacked ? memory.total : 1,
-                    height: 56,
-                    appearance: look
-                )
-            }
+            MetricChart(
+                chart: "memory.used",
+                title: "Memory used",
+                sources: look.shape == .stacked
+                    ? [.init(metric: MonitorHub.Metric.memoryApp, color: look.primary,
+                             label: "App", format: { Format.bytes($0) }),
+                       .init(metric: MonitorHub.Metric.memoryWired, color: look.secondary,
+                             label: "Wired", format: { Format.bytes($0) }),
+                       .init(metric: MonitorHub.Metric.memoryCompressed, color: compressedColor,
+                             label: "Compressed", format: { Format.bytes($0) })]
+                    : [.init(metric: MonitorHub.Metric.memory, color: look.primary,
+                             label: "Used", format: { Format.percent($0, decimals: 1) })],
+                shape: look.shape,
+                ceiling: look.shape == .stacked ? memory.total : 1,
+                height: 56,
+                appearance: look,
+                value: Format.percent(memory.usedFraction)
+            )
 
-            GraphSection(title: "Swap",
-                         value: Format.bytes(memory.swapUsed),
-                         valueColor: memory.swapUsed > 1_073_741_824 ? .orange : .primary,
-                         caption: "of \(Format.bytes(memory.swapTotal))") {
-                HistoryGraph(
-                    plots: [Plot(values: series.swap, color: compressedColor)],
-                    shape: look.shape == .stacked ? .area : look.shape,
-                    ceiling: max(memory.swapTotal, series.swap.max() ?? 1),
-                    height: 30,
-                    appearance: look,
-                    gridLines: [0.5]
-                )
-            }
+            MetricChart(
+                chart: "memory.swap",
+                title: "Swap",
+                sources: [.init(metric: MonitorHub.Metric.swap, color: compressedColor,
+                                label: "Swap", format: { Format.bytes($0) })],
+                shape: look.shape == .stacked ? .area : look.shape,
+                ceiling: memory.swapTotal,
+                autoScale: memory.swapTotal <= 0,
+                height: 30,
+                appearance: look,
+                value: Format.bytes(memory.swapUsed),
+                valueColor: memory.swapUsed > 1_073_741_824 ? .orange : .primary,
+                caption: "of \(Format.bytes(memory.swapTotal))",
+                gridLines: [0.5]
+            )
 
             Divider()
 
@@ -328,17 +343,19 @@ struct DisksPanel: View {
                 }
             }
 
-            GraphSection(title: "Activity",
-                         value: "R \(Format.rate(disk.activity.readRate))  W \(Format.rate(disk.activity.writeRate))",
-                         legend: [("Read", look.primary), ("Write", look.secondary)]) {
-                HistoryGraph(
-                    plots: [Plot(values: series.diskRead, color: look.primary),
-                            Plot(values: series.diskWrite, color: look.secondary)],
-                    shape: look.shape,
-                    height: 56,
-                    appearance: look
-                )
-            }
+            MetricChart(
+                chart: "disk.activity",
+                title: "Activity",
+                sources: [.init(metric: MonitorHub.Metric.diskRead, color: look.primary,
+                                label: "Read", format: { Format.rate($0) }),
+                          .init(metric: MonitorHub.Metric.diskWrite, color: look.secondary,
+                                label: "Write", format: { Format.rate($0) })],
+                shape: look.shape,
+                autoScale: true,
+                height: 56,
+                appearance: look,
+                value: "R \(Format.rate(disk.activity.readRate))  W \(Format.rate(disk.activity.writeRate))"
+            )
 
             Divider()
 

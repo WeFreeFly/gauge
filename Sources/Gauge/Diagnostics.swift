@@ -76,6 +76,16 @@ enum Benchmark {
             ("Battery", { _ = battery.sample() }),
             ("Processes", { _ = processes.sample() }),
         ]
+        // Recording happens 28 times a tick, so a small cost is not small.
+        let store = HistoryStore(directory: URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("gauge-bench-\(UUID().uuidString)"))
+        for index in 0..<28 { store.record("bench.\(index)", 0.5) }
+        cases.append(("  ⤷ history write", {
+            let now = Date()
+            for index in 0..<28 { store.record("bench.\(index)", Double.random(in: 0...1), at: now) }
+        }))
+        cases.append(("  ⤷ history read", { _ = store.series("bench.0", range: .h1) }))
+
         cases.append(("  ├ net counters", { _ = NetworkMonitor.interfaceCounters() }))
         cases.append(("  └ net addresses", { _ = NetworkMonitor.interfaceDetails(primary: nil) }))
 
@@ -116,6 +126,40 @@ enum Benchmark {
         print(String(repeating: "─", count: 40))
         print(String(format: "%-18@ %8.2f ms per pass", "total" as NSString, total))
         print(String(format: "at a 2 s interval that is %.2f%% of one core", total / 2000 * 100))
+    }
+}
+
+/// Prints what each range actually returns, which is the only way to tell a
+/// flat-looking chart apart from a chart with nothing in it.
+@MainActor
+enum HistoryStats {
+    static func run(demo: Bool) {
+        let hub = MonitorHub()
+        if demo {
+            hub.injectDemoHistory()
+        } else {
+            hub.sampleNow()
+            RunLoop.current.run(until: Date().addingTimeInterval(1))
+            hub.sampleNow()
+        }
+
+        print(String(format: "%-8@ %9@ %10@ %10@ %10@",
+                     "range" as NSString, "buckets" as NSString, "interval" as NSString,
+                     "filled" as NSString, "span" as NSString))
+        print(String(repeating: "─", count: 52))
+        for range in HistoryRange.allCases {
+            let series = hub.series(MonitorHub.Metric.cpu, range: range)
+            let filled = series.buckets.filter { !$0.isEmpty }.count
+            let span = series.interval * Double(series.buckets.count)
+            print(String(format: "%-8@ %9d %8.0fs %10d %9.0fm",
+                         range.short as NSString, series.buckets.count,
+                         series.interval, filled, span / 60))
+        }
+
+        print("\nmetrics stored: \(hub.history.metricNames.count)")
+        let sample = hub.series(MonitorHub.Metric.cpu, range: .h1)
+        let values = sample.averages.prefix(12).map { String(format: "%.2f", $0) }
+        print("first values at 1h: \(values.joined(separator: " "))")
     }
 }
 

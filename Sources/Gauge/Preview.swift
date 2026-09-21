@@ -149,10 +149,16 @@ enum PreviewRenderer {
         let hosting = NSHostingView(rootView: root)
         hosting.appearance = appearance
         hosting.wantsLayer = true
-        hosting.layoutSubtreeIfNeeded()
-        var size = hosting.fittingSize
-        if size.width < 10 || size.height < 10 { size = NSSize(width: 320, height: 400) }
-        hosting.frame = NSRect(origin: .zero, size: size)
+        // The panel measures its own content, so the size only settles after a
+        // couple of layout passes with the run loop turning between them.
+        var size = NSSize(width: 320, height: 400)
+        for _ in 0..<3 {
+            hosting.layoutSubtreeIfNeeded()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            let measured = hosting.fittingSize
+            if measured.width > 10, measured.height > 10 { size = measured }
+            hosting.frame = NSRect(origin: .zero, size: size)
+        }
         hosting.layoutSubtreeIfNeeded()
 
         guard let representation = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return nil }

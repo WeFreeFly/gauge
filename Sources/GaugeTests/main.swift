@@ -193,6 +193,39 @@ t.suite("Sensor naming") {
                 ["CPU Die 1", "CPU Die 2", "CPU Die 10"])
     }
 
+    t.test("sensors sharing a name are numbered apart") {
+        // Six of this Mac's sensors all report "gas gauge battery".
+        var readings = (0..<3).map {
+            SensorReading(id: "b\($0)", name: "Battery Cell", group: .battery,
+                          kind: .temperature, value: 30)
+        }
+        readings.append(SensorReading(id: "s", name: "SSD CH0 temp", group: .storage,
+                                      kind: .temperature, value: 40))
+        SensorMonitor.numberDuplicateNames(in: &readings)
+
+        t.equal(readings.prefix(3).map(\.name), ["Battery Cell 1", "Battery Cell 2", "Battery Cell 3"])
+        t.equal(readings.last?.name, "SSD CH0 temp", "a unique name is left alone")
+    }
+
+    t.test("the same name in different groups is not merged") {
+        var readings = [
+            SensorReading(id: "a", name: "Die 1", group: .cpu, kind: .temperature, value: 50),
+            SensorReading(id: "b", name: "Die 1", group: .package, kind: .temperature, value: 40),
+        ]
+        SensorMonitor.numberDuplicateNames(in: &readings)
+        t.equal(readings.map(\.name), ["Die 1", "Die 1"], "different groups, no clash")
+    }
+
+    t.test("live readings carry no duplicate names within a group") {
+        let sample = SensorMonitor().sample()
+        var seen = Set<String>()
+        for reading in sample.readings {
+            let key = "\(reading.group.rawValue)|\(reading.name)"
+            t.expect(!seen.contains(key), "duplicate row: \(key)")
+            seen.insert(key)
+        }
+    }
+
     t.test("fan load is measured against the fan's own envelope") {
         let fan = FanReading(id: 0, name: "Fan", rpm: 4433, minRPM: 2317, maxRPM: 6550, targetRPM: nil)
         t.close(fan.loadFraction, 0.5, accuracy: 0.01)

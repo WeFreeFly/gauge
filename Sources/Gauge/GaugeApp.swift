@@ -70,7 +70,8 @@ struct GaugeApp {
         if let index = arguments.firstIndex(of: "--panel") {
             let name = arguments.count > index + 1 ? arguments[index + 1] : "cpu"
             let seconds = arguments.count > index + 2 ? Double(arguments[index + 2]) ?? 10 : 10
-            PanelPreviewRun.run(module: ModuleID(rawValue: name) ?? .cpu, seconds: seconds)
+            PanelPreviewRun.run(module: ModuleID(rawValue: name) ?? .cpu, seconds: seconds,
+                                expand: arguments.contains("--expand"))
             return
         }
         if arguments.contains("--history-stats") {

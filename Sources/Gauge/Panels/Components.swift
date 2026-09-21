@@ -21,14 +21,42 @@ final class UIState<Value>: ObservableObject {
 struct Panel<Content: View>: View {
     var width: CGFloat = 300
     @EnvironmentObject private var settings: GaugeSettings
+    /// Measured height of the content, so the panel can be exactly as tall as
+    /// it needs to be until it runs out of screen.
+    @StateObject private var contentHeight = UIState<CGFloat>(0)
     @ViewBuilder var content: Content
 
+    /// A dropdown hangs from the menu bar, so the room it has is the screen
+    /// below that, less a margin. Expanding a long section — every sensor,
+    /// say — used to push the rest off the bottom with no way to reach it.
+    private var maximumHeight: CGFloat {
+        let screen = NSScreen.main?.visibleFrame.height ?? 800
+        return max(240, screen - 48)
+    }
+
+    private var isScrollable: Bool { contentHeight.value > maximumHeight + 1 }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            content
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 12) {
+                content
+            }
+            .padding(14)
+            .frame(width: width, alignment: .leading)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { contentHeight.value = proxy.size.height }
+                        .onChange(of: proxy.size.height) { _, height in
+                            contentHeight.value = height
+                        }
+                }
+            )
         }
-        .padding(14)
-        .frame(width: width, alignment: .leading)
+        .frame(width: width,
+               height: min(max(contentHeight.value, 1), maximumHeight))
+        .scrollIndicators(isScrollable ? .visible : .hidden)
+        .scrollDisabled(!isScrollable)
         .panelChrome(settings.panel)
     }
 }

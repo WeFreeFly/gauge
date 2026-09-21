@@ -55,32 +55,52 @@ final class PanelWindow: NSObject, NSWindowDelegate {
 
     func update(content: AnyView) {
         hosting.rootView = content
+        if window.isVisible {
+            DispatchQueue.main.async { [weak self] in self?.layout() }
+        }
     }
 
     // MARK: Presentation
 
+    private var anchor: NSStatusBarButton?
+
     func show(below button: NSStatusBarButton) {
-        guard let buttonWindow = button.window else { return }
-
-        hosting.layoutSubtreeIfNeeded()
-        let size = hosting.fittingSize
-        window.setContentSize(size)
-
-        // Anchor to the button, then keep the panel on screen.
-        let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        var origin = CGPoint(x: buttonFrame.midX - size.width / 2,
-                             y: buttonFrame.minY - size.height)
-
-        if let screen = buttonWindow.screen ?? NSScreen.main {
-            let visible = screen.visibleFrame
-            origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
-            if origin.y < visible.minY + 4 { origin.y = visible.minY + 4 }
-        }
-
-        window.setFrameOrigin(origin)
+        anchor = button
+        layout()
         window.orderFrontRegardless()
         window.makeKey()
         installMonitors()
+
+        // The content measures itself through a GeometryReader, so its real
+        // height only exists after a layout pass or two. Without these the
+        // window would keep whatever size it guessed first.
+        DispatchQueue.main.async { [weak self] in self?.layout() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in self?.layout() }
+    }
+
+    /// Sizes the window to its content, never taller than the screen below the
+    /// menu bar, and keeps it anchored under its status item.
+    private func layout() {
+        guard let button = anchor, let buttonWindow = button.window else { return }
+
+        hosting.layoutSubtreeIfNeeded()
+        var size = hosting.fittingSize
+        let screen = buttonWindow.screen ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1_440, height: 900)
+
+        // A panel taller than the screen would put its lower half out of
+        // reach; the content scrolls instead.
+        size.height = min(size.height, visible.height - 12)
+        size.width = min(size.width, visible.width - 12)
+        guard size.width > 1, size.height > 1 else { return }
+        window.setContentSize(size)
+
+        let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        var origin = CGPoint(x: buttonFrame.midX - size.width / 2,
+                             y: buttonFrame.minY - size.height)
+        origin.x = min(max(origin.x, visible.minX + 4), visible.maxX - size.width - 4)
+        origin.y = max(origin.y, visible.minY + 4)
+        window.setFrameOrigin(origin)
     }
 
     /// Used by `--panel`, which has no status item to anchor to.
@@ -98,6 +118,7 @@ final class PanelWindow: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        anchor = nil
         guard window.isVisible else { return }
         removeMonitors()
         window.orderOut(nil)

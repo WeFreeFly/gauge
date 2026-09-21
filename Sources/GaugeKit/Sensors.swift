@@ -341,6 +341,7 @@ public final class SensorMonitor: @unchecked Sendable {
         readIntelTemperaturesIfNeeded(into: &snapshot, socDieTemps: socDieTemps)
         readFans(into: &snapshot)
         readPower(into: &snapshot)
+        Self.numberDuplicateNames(in: &snapshot.readings)
 
         if essentialOnly, let previous = cached {
             // Keep the sensors this pass did not read, so a panel opened a
@@ -460,6 +461,33 @@ public final class SensorMonitor: @unchecked Sendable {
         if lower.contains("pmu2") { order += 100 }
         if lower.contains("tdev") { order += 10 }
         return order
+    }
+
+    /// Six of this Mac's sensors report the name "gas gauge battery", which
+    /// would list as six identical rows. Numbering them makes each one
+    /// referrable without inventing a location for it.
+    public static func numberDuplicateNames(in readings: inout [SensorReading]) {
+        var counts: [String: Int] = [:]
+        for reading in readings {
+            counts["\(reading.group.rawValue)|\(reading.name)", default: 0] += 1
+        }
+
+        var seen: [String: Int] = [:]
+        for index in readings.indices {
+            let key = "\(readings[index].group.rawValue)|\(readings[index].name)"
+            guard counts[key, default: 0] > 1 else { continue }
+            let number = seen[key, default: 0] + 1
+            seen[key] = number
+            let original = readings[index]
+            readings[index] = SensorReading(id: original.id,
+                                            name: "\(original.name) \(number)",
+                                            rawName: original.rawName,
+                                            group: original.group,
+                                            kind: original.kind,
+                                            value: original.value,
+                                            range: original.range,
+                                            order: original.order)
+        }
     }
 
     /// The trailing digits of a sensor name, used to keep numbering stable

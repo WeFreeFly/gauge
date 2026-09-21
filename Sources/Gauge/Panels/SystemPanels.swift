@@ -135,9 +135,15 @@ struct NetworkPanel: View {
 // MARK: - Sensors
 
 struct SensorsPanel: View {
+    /// Only `--panel sensors --expand` passes this, to check the tall case.
+    var initiallyExpanded: Set<SensorGroup>?
+
     @EnvironmentObject private var hub: MonitorHub
     @EnvironmentObject private var settings: GaugeSettings
-    @StateObject private var expanded = UIState(false)
+    /// The cluster groups are the ones worth seeing first; the rest are
+    /// there when wanted. Collapsed groups still show their range.
+    @StateObject private var expandedGroups =
+        UIState<Set<SensorGroup>>([.cpu, .cpuPerformance, .cpuEfficiency])
 
     var body: some View {
         let sensors = hub.snapshot.sensors
@@ -234,35 +240,130 @@ struct SensorsPanel: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 let groups = sensors.grouped.filter { $0.group != .fans }
-                ForEach(groups.prefix(expanded.value ? 99 : 3), id: \.group) { entry in
-                    VStack(alignment: .leading, spacing: 3) {
-                        SectionLabel(text: entry.group.rawValue)
-                        if expanded.value, let explanation = entry.group.explanation {
-                            Text(explanation)
-                                .font(.system(size: 9))
-                                .foregroundStyle(.tertiary)
-                                .fixedSize(horizontal: false, vertical: true)
+                ForEach(groups, id: \.group) { entry in
+                    SensorGroupSection(
+                        group: entry.group,
+                        title: title(for: entry.group),
+                        readings: entry.readings,
+                        isExpanded: expandedGroups.value.contains(entry.group),
+                        toggle: {
+                            if expandedGroups.value.contains(entry.group) {
+                                expandedGroups.value.remove(entry.group)
+                            } else {
+                                expandedGroups.value.insert(entry.group)
+                            }
                         }
-                        ForEach(expanded.value ? entry.readings : Array(entry.readings.prefix(4))) { reading in
-                            StatRow(label: reading.name,
-                                    value: reading.formatted(temperatureUnit: settings.temperatureUnit))
-                        }
-                        if !expanded.value, entry.readings.count > 4 {
-                            Text("+\(entry.readings.count - 4) more")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
+                    )
                 }
             }
 
-            Button(expanded.value ? "Show less" : "Show all sensors") { expanded.value.toggle() }
+            HStack(spacing: 10) {
+                Button("Expand all") {
+                    expandedGroups.value = Set(sensors.grouped.map(\.group))
+                }
                 .buttonStyle(.link)
                 .font(.system(size: 10))
+                Button("Collapse all") { expandedGroups.value = [] }
+                    .buttonStyle(.link)
+                    .font(.system(size: 10))
+                Spacer()
+                Text("\(sensors.readings.count) sensors")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+            }
 
             PanelFooter(onSettings: { SettingsWindowController.shared.show(hub: hub, selecting: .sensors) })
+        }
+        .onAppear {
+            if let initiallyExpanded { expandedGroups.value = initiallyExpanded }
+        }
+    }
+
+    /// Once a calibration exists, the cluster groups are named after this
+    /// machine's own clusters rather than generic wording.
+    private func title(for group: SensorGroup) -> String {
+        guard let calibration = settings.sensorCalibration else { return group.rawValue }
+        return switch group {
+        case .cpuPerformance: "CPU · \(calibration.performanceClusterName) cores"
+        case .cpuEfficiency: "CPU · \(calibration.efficiencyClusterName) cores"
+        default: group.rawValue
+        }
+    }
+}
+
+/// One collapsible group of sensors. Collapsed it still reports the range,
+/// so a group can be judged without opening it.
+struct SensorGroupSection: View {
+    let group: SensorGroup
+    let title: String
+    let readings: [SensorReading]
+    let isExpanded: Bool
+    let toggle: () -> Void
+
+    @EnvironmentObject private var settings: GaugeSettings
+    @StateObject private var hovering = UIState(false)
+
+    private var summary: String {
+        let values = readings.map(\.value)
+        guard let low = values.min(), let high = values.max() else { return "" }
+        guard let kind = readings.first?.kind else { return "" }
+        func format(_ value: Double) -> String {
+            SensorReading(id: "", name: "", group: group, kind: kind, value: value)
+                .formatted(temperatureUnit: settings.temperatureUnit)
+        }
+        return low == high ? format(high) : "\(format(low))–\(format(high))"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Button(action: toggle) {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    Text(title.uppercased())
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .kerning(0.5)
+                    Text("\(readings.count)")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.primary.opacity(0.08)))
+                    Spacer(minLength: 6)
+                    Text(summary)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(hovering.value ? 0.07 : 0))
+                )
+                .padding(.horizontal, -5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering.value = $0 }
+
+            if isExpanded {
+                if let explanation = group.explanation {
+                    Text(explanation)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 1)
+                }
+                ForEach(readings) { reading in
+                    StatRow(label: reading.name,
+                            value: reading.formatted(temperatureUnit: settings.temperatureUnit))
+                }
+            }
         }
     }
 }

@@ -1,10 +1,6 @@
 import Foundation
 import GaugeKit
 
-enum GaugeVersion {
-    static let string = "1.0"
-}
-
 /// Prints one full sampling pass. Two passes by default because every rate in
 /// the app is a delta and the first pass has nothing to subtract from.
 /// Fetches one forecast and prints it, so the provider plumbing can be checked

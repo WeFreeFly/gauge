@@ -19,7 +19,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
             let controller = NSHostingController(rootView: root)
             let window = NSWindow(contentViewController: controller)
-            window.title = "Gauge GaugeSettings"
+            window.title = "Gauge Settings"
             window.styleMask = [.titled, .closable, .miniaturizable]
             window.setContentSize(NSSize(width: 660, height: 520))
             window.isReleasedWhenClosed = false

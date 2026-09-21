@@ -30,7 +30,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Gauge — a local system monitor.</string>
+	<string>Gauge — a local system monitor. Wefreefly &lt;wefreefly@thaisimply.com&gt;</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>

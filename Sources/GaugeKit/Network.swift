@@ -246,7 +246,7 @@ public final class NetworkMonitor: @unchecked Sendable {
         return bytes.map { String(format: "%02x", $0) }.joined(separator: ":")
     }
 
-    /// Turns "en0" into "Wi-Fi" using the same service list System GaugeSettings shows.
+    /// Turns "en0" into "Wi-Fi" using the same service list System Settings shows.
     private static func friendlyName(for bsdName: String) -> String? {
         guard let interfaces = SCNetworkInterfaceCopyAll() as? [SCNetworkInterface] else { return nil }
         for interface in interfaces {

@@ -24,6 +24,9 @@
 
 แต่ละ module มี menu bar item ของตัวเอง เลือกรูปแบบแสดงผลได้ 5 แบบ: Text, Graph, Text + Graph, Gauge, Icon
 
+**ออกจากโปรแกรม** ได้ 3 ทาง: ปุ่ม power มุมขวาล่างของทุก panel, คลิกขวาที่ไอคอน menu bar → Quit Gauge,
+หรือปุ่ม Quit Gauge ใน Settings → About
+
 ### กราฟและหน้าตา
 
 Layout เดินตามโครงเดียวกับ iStat Menus: แต่ละ dropdown คือ stack ของ **section** ที่มีหัวข้อ

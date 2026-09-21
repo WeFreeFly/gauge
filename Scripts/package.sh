@@ -22,6 +22,12 @@ BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' \
 IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
               "$PROJECT_DIR/Resources/Info.plist")"
 
+# Kept beside the app's own constants in Sources/Gauge/Diagnostics.swift so the
+# installer and the About pane say the same thing.
+AUTHOR="Wefreefly"
+AUTHOR_EMAIL="wefreefly@thaisimply.com"
+BUILT_WITH="Built with Claude Code"
+
 echo "▸ Gauge $VERSION (build $BUILD)"
 
 "$PROJECT_DIR/build.sh" release
@@ -66,6 +72,13 @@ Uninstall
   these files:
       ~/Library/Preferences/com.gauge.app.plist
       ~/Library/Application Support/Gauge
+
+Quit
+  Click any Gauge menu bar item and use the power button at the bottom of the
+  panel, or right-click a menu bar item and choose Quit Gauge.
+
+$AUTHOR <$AUTHOR_EMAIL>
+$BUILT_WITH
 TXT
 
   cp "$PROJECT_DIR/Scripts/uninstall.sh" "$staging/Uninstall Gauge.command"
@@ -174,6 +187,7 @@ sensors and battery directly from this Mac.</p>
 switched on, and both are off by default.</p>
 <p style="color:#888;">Gauge will be installed in Applications and started
 when the installer finishes.</p>
+<p style="color:#888;">$AUTHOR &lt;$AUTHOR_EMAIL&gt;<br/>$BUILT_WITH</p>
 </body></html>
 HTML
 

@@ -146,7 +146,7 @@ struct GeneralSettings: View {
             if let message = loginItemError.value {
                 Text(message).settingsFootnote().foregroundStyle(.orange)
             } else {
-                Text("Uses the system login item service, so it appears in System GaugeSettings › General › Login Items.")
+                Text("Uses the system login item service, so it appears in System Settings › General › Login Items.")
                     .settingsFootnote()
             }
         }
@@ -497,13 +497,47 @@ struct AboutSettings: View {
 
     var body: some View {
         SettingsGroup("Gauge \(GaugeVersion.string)") {
-            Text("A menu bar system monitor for macOS.").settingsFootnote()
+            HStack(alignment: .top, spacing: 12) {
+                if let icon = Self.appIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 52, height: 52)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Gauge \(GaugeVersion.string)")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(GaugeVersion.tagline)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text(GaugeVersion.author)
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.top, 3)
+                    Link(GaugeVersion.authorEmail,
+                         destination: URL(string: "mailto:\(GaugeVersion.authorEmail)")!)
+                        .font(.system(size: 11))
+                    Text(GaugeVersion.builtWith)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 2)
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 10) {
+                Button("Quit Gauge") { NSApp.terminate(nil) }
+                    .controlSize(.small)
+                Spacer()
+            }
+            .padding(.top, 2)
         }
 
         SettingsGroup("This Mac") {
             LabeledContent("Model", value: hub.hardware.modelIdentifier)
             LabeledContent("Chip", value: hub.hardware.chip)
-            LabeledContent("Cores", value: "\(hub.hardware.coreCount) (\(hub.hardware.performanceCores)P + \(hub.hardware.efficiencyCores)E)")
+            LabeledContent("Cores",
+                           value: "\(hub.hardware.coreCount) "
+                                + "(\(hub.hardware.performanceCores) \(hub.performanceClusterName)"
+                                + " + \(hub.hardware.efficiencyCores) \(hub.efficiencyClusterName))")
             LabeledContent("Memory", value: Format.bytes(hub.hardware.memoryBytes))
             LabeledContent("macOS", value: hub.hardware.osVersion)
         }
@@ -518,6 +552,17 @@ struct AboutSettings: View {
             sourceRow("Battery", "IOPowerSources, AppleSmartBattery and the SMC gas gauge")
             sourceRow("Weather", "Open-Meteo or AccuWeather, only when enabled")
         }
+    }
+
+    /// The bundle's own icon. `NSApp.applicationIconImage` returns a generic
+    /// placeholder when the process is not running from a bundle, which is how
+    /// the preview renderer runs.
+    private static var appIcon: NSImage? {
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let image = NSImage(contentsOf: url) {
+            return image
+        }
+        return NSApp.applicationIconImage
     }
 
     private func sourceRow(_ label: String, _ detail: String) -> some View {

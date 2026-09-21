@@ -80,6 +80,17 @@ enum PreviewRenderer {
 
         for (label, appearance) in appearances {
             if let image = render(view: AnyView(
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) { AboutSettings() }.padding(20)
+                }
+                .frame(width: 460, height: 520)
+                .environmentObject(hub)
+                .environmentObject(hub.settings)
+            ), appearance: appearance) {
+                write(image, to: directory.appendingPathComponent("settings-about-\(label).png"),
+                      background: backdrop(for: appearance))
+            }
+            if let image = render(view: AnyView(
                 ChartGallery().environmentObject(hub).environmentObject(hub.settings)
             ), appearance: appearance) {
                 write(image, to: directory.appendingPathComponent("charts-\(label).png"),

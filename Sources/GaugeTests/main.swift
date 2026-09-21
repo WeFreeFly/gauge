@@ -432,6 +432,54 @@ t.suite("Colours") {
     }
 }
 
+// MARK: - User-visible text
+
+t.suite("Wording") {
+    // Renaming the Settings type once rewrote the word inside string literals
+    // too, and "Gauge GaugeSettings" shipped as a tooltip. This reads the
+    // sources back so a blanket rename cannot do it again unnoticed.
+    let sources: [String] = {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // GaugeTests
+            .deletingLastPathComponent()   // Sources
+        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
+        else { return [] }
+        var files: [String] = []
+        for case let url as URL in walker where url.pathExtension == "swift" {
+            // This file spells out the strings it is looking for.
+            guard url.path != #filePath else { continue }
+            if let text = try? String(contentsOf: url, encoding: .utf8) { files.append(text) }
+        }
+        return files
+    }()
+
+    t.test("the sources are readable from the test") {
+        t.expect(sources.count > 10, "found only \(sources.count) source files")
+    }
+
+    t.test("no type name leaked into a string or a sentence") {
+        for text in sources {
+            for line in text.split(separator: "\n") {
+                let isComment = line.trimmingCharacters(in: .whitespaces).hasPrefix("//")
+                let quoted = line.contains("\"") && line.contains("GaugeSettings")
+                guard isComment || quoted else { continue }
+                // A type name is fine in code; it is not a word for a person.
+                let offends = line.contains("Gauge GaugeSettings")
+                    || line.contains("System GaugeSettings")
+                    || line.contains("in GaugeSettings →")
+                t.expect(!offends, "leaked type name: \(line.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+    }
+
+    t.test("the author credit is filled in") {
+        t.expect(!GaugeVersion.author.isEmpty, "no author")
+        t.expect(GaugeVersion.authorEmail.contains("@"), "author email looks wrong")
+        t.expect(GaugeVersion.credit.contains(GaugeVersion.author), "credit omits the author")
+        t.expect(GaugeVersion.credit.contains(GaugeVersion.authorEmail), "credit omits the email")
+    }
+}
+
 // MARK: - History store
 
 t.suite("History store") {

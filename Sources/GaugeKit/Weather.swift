@@ -81,8 +81,8 @@ public enum WeatherError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .missingAPIKey: "This provider needs an API key. Add one in GaugeSettings → Weather."
-        case .noLocation: "Choose a location in GaugeSettings → Weather."
+        case .missingAPIKey: "This provider needs an API key. Add one in Settings → Weather."
+        case .noLocation: "Choose a location in Settings → Weather."
         case .badResponse(let code): "The weather service returned HTTP \(code)."
         case .decoding(let detail): "Could not read the weather response (\(detail))."
         case .transport(let detail): "Could not reach the weather service (\(detail))."

@@ -200,7 +200,7 @@ final class StatusItemController: NSObject {
 
     private func showContextMenu(for module: ModuleID, from button: NSStatusBarButton) {
         let menu = NSMenu()
-        menu.addItem(withTitle: "\(module.title) GaugeSettings…", action: #selector(openModuleSettings(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "\(module.title) Settings…", action: #selector(openModuleSettings(_:)), keyEquivalent: "")
             .representedObject = module
         menu.items.last?.target = self
         menu.addItem(.separator())
@@ -223,7 +223,7 @@ final class StatusItemController: NSObject {
         menu.addItem(hide)
 
         menu.addItem(.separator())
-        let settingsItem = NSMenuItem(title: "Gauge GaugeSettings…", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "Gauge Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
         let quit = NSMenuItem(title: "Quit Gauge", action: #selector(quit), keyEquivalent: "q")

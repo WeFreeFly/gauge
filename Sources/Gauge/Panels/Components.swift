@@ -539,15 +539,40 @@ struct PanelFooter: View {
                     .font(.system(size: 10))
             }
             Spacer(minLength: 0)
-            Button {
-                onSettings()
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 11))
+            FooterButton(symbol: "gearshape", help: "Gauge Settings", action: onSettings)
+            FooterButton(symbol: "power", help: "Quit Gauge", isDestructive: true) {
+                NSApp.terminate(nil)
             }
-            .buttonStyle(.plain)
-            .help("Gauge GaugeSettings")
         }
+    }
+}
+
+/// A small icon button with a hover highlight, so the footer reads as
+/// something clickable rather than decoration. Quit used to be reachable only
+/// by right-clicking a menu bar item, which is not somewhere people look.
+struct FooterButton: View {
+    let symbol: String
+    let help: String
+    var isDestructive = false
+    let action: () -> Void
+
+    @StateObject private var hovering = UIState(false)
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(isDestructive && hovering.value ? Color.red : Color.secondary)
+                .frame(width: 20, height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(hovering.value ? 0.1 : 0))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering.value = $0 }
+        .help(help)
     }
 }
 

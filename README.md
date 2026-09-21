@@ -16,7 +16,7 @@
 | **Memory** | App / Wired / Compressed / Cached แยกสี, memory pressure, swap, page-in/out |
 | **Disks** | ความจุทุก volume ที่ mount อยู่, อัตรา read/write แบบเรียลไทม์, ยอดสะสมตั้งแต่ boot |
 | **Network** | ดาวน์/อัปโหลดเรียลไทม์, peak, ยอดสะสม, ทุก interface พร้อม IP, public IP (ต้องเปิดเอง) |
-| **Sensors** | อุณหภูมิ CPU die (เฉลี่ย + สูงสุด), **ความถี่ Efficiency / Super / GPU เป็น GHz**, กราฟอุณหภูมิ CPU, กำลังไฟ, พัดลม, กราฟอุณหภูมิ SSD และอุณหภูมิแบตรวม (เฉลี่ยจากทุกเซลล์) — รายการเซ็นเซอร์ดิบทั้ง 47 ตัวอยู่ใน Settings → Sensors |
+| **Sensors** | อุณหภูมิ CPU die (เฉลี่ย + สูงสุด), **ความถี่ Efficiency / Super / GPU เป็น GHz**, กราฟอุณหภูมิ CPU, กำลังไฟ, พัดลม, กราฟอุณหภูมิ SSD และอุณหภูมิแบตรวม — **เลือกได้ว่าจะให้ menu bar แสดงค่าไหน** — รายการเซ็นเซอร์ดิบทั้ง 47 ตัวอยู่ใน Settings → Sensors |
 | **Battery** | %, health, cycle count, ความจุจริงหน่วย mAh, แรงดัน, กระแส, อุณหภูมิ, เวลาที่เหลือ |
 | **Time** | นาฬิกาปรับ format ได้ + world clocks |
 | **Weather** | สภาพอากาศปัจจุบัน / รายชั่วโมง / 7 วัน — **ปิดไว้เป็นค่าเริ่มต้น** |
@@ -294,6 +294,15 @@ Sources/
 ```
 
 ---
+
+## Bundle identifier
+
+`com.thaisimply.gauge` — ใช้เป็นชื่อของ preferences, keychain service, cache และ pkg receipt ด้วย
+
+เวอร์ชันแรก ๆ ใช้ `com.gauge.app` ซึ่งไม่ใช่โดเมนของใคร พอเปลี่ยนแล้ว macOS จะมองเป็นคนละแอป
+ค่า settings เดิมเลยจะหายไปเฉย ๆ — โค้ดจึงมี **migration** ที่ย้าย settings และ AccuWeather key
+จาก domain เก่ามาให้ครั้งเดียวตอนเปิดครั้งแรก (ทำเฉพาะ domain จริงของแอป ไม่ยุ่งกับ suite อื่น)
+และตัว uninstaller ก็ลบร่องรอยของ id เก่าให้ด้วย
 
 ## หมายเหตุทางเทคนิค 3 ข้อ
 

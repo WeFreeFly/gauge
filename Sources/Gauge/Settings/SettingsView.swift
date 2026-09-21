@@ -241,6 +241,10 @@ struct SensorSettings: View {
     @EnvironmentObject private var settings: GaugeSettings
 
     var body: some View {
+        SettingsGroup("Menu bar readings") {
+            SensorMenubarPicker(style: .full)
+        }
+
         SettingsGroup("Which sensors are the CPU?") {
             Text("Apple does not document what a sensor named \"PMU tdie7\" measures. "
                + "Gauge can find out by loading one core cluster at a time and watching "

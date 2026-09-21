@@ -4,7 +4,7 @@ import Security
 /// The AccuWeather key is a credential, so it lives in the keychain rather than
 /// in the preferences JSON.
 public enum Keychain {
-    private static let service = "com.gauge.app"
+    public static let service = "com.thaisimply.gauge"
 
     public static func set(_ value: String?, for account: String) {
         let query: [String: Any] = [
@@ -21,7 +21,9 @@ public enum Keychain {
         SecItemAdd(attributes as CFDictionary, nil)
     }
 
-    public static func get(_ account: String) -> String? {
+    /// `service` names the keychain entry; an older identifier can be passed
+    /// when migrating from a previous bundle id.
+    public static func get(_ account: String, service: String = Keychain.service) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

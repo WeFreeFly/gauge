@@ -170,6 +170,8 @@ struct SensorsPanel: View {
 
             ClockSection()
 
+            SensorMenubarPicker(style: .compact)
+
             MetricChart(
                 chart: "sensors.temperature",
                 title: "CPU die temperature",

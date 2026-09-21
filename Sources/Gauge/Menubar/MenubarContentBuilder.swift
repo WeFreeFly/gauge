@@ -59,20 +59,21 @@ enum MenubarContentBuilder {
             return content
 
         case .sensors:
+            // Which readings appear here is the user's choice; anything this
+            // Mac does not report is skipped rather than shown as a dash.
+            let chosen = settings.sensorMenubarItems
             var lines: [String] = []
-            if let temperature = snapshot.sensors.socTemperature {
-                lines.append(Format.temperature(temperature, unit: settings.temperatureUnit))
-            }
-            if let fan = snapshot.sensors.fans.first, fan.rpm > 0 {
-                lines.append("\(Int(fan.rpm)) rpm")
+            for item in chosen.prefix(SensorMenubarItem.maximumSelected) {
+                guard let text = item.formatted(from: snapshot.sensors,
+                                                unit: settings.temperatureUnit) else { continue }
+                lines.append(item.shortPrefix + text)
             }
             content.lines = lines.isEmpty ? ["—"] : lines
             content.series = series.socTemperature
             // A fixed 0–100 °C window keeps the trace comparable over time.
             content.seriesMaximum = 100
-            if let temperature = snapshot.sensors.socTemperature {
-                content.loadFraction = ((temperature - 35) / 55).clamped(to: 0...1)
-            }
+            // The first chosen reading decides the colour, when it has a scale.
+            content.loadFraction = chosen.first?.loadFraction(from: snapshot.sensors)
             return content
 
         case .battery:

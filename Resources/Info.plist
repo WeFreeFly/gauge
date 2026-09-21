@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>Gauge</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.gauge.app</string>
+	<string>com.thaisimply.gauge</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

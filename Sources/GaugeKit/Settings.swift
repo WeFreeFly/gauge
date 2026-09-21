@@ -139,6 +139,9 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
     @Published public var menubarGraphWidth: Double { didSet { scheduleSave() } }
     @Published public var highlightRowsOnHover: Bool { didSet { scheduleSave() } }
 
+    /// What the Sensors menu bar item shows, in order.
+    @Published public var sensorMenubarItems: [SensorMenubarItem] { didSet { scheduleSave() } }
+
     /// Result of the last sensor calibration, if one has been run on this Mac.
     @Published public var sensorCalibration: SensorCalibration? { didSet { scheduleSave() } }
 
@@ -170,6 +173,7 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         var panelMaterial: PanelMaterial?      // pre-glass setting, migrated below
         var menubarGraphWidth: Double?
         var highlightRowsOnHover: Bool?
+        var sensorMenubarItems: [SensorMenubarItem]?
         var sensorCalibration: SensorCalibration?
         var timeZones: [String]?
         var timeFormat: String?
@@ -177,6 +181,9 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
     }
 
     public init(defaults: UserDefaults = .standard) {
+        // The bundle identifier changed, which moved the preferences domain;
+        // this brings the old settings across before they are read.
+        Migration.runIfNeeded(defaults: defaults)
         self.defaults = defaults
         let stored: Stored? = {
             guard let data = defaults.data(forKey: Self.defaultsKey) else { return nil }
@@ -225,6 +232,8 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         menubarGraphWidth = stored?.menubarGraphWidth ?? 32
         highlightRowsOnHover = stored?.highlightRowsOnHover ?? true
 
+        sensorMenubarItems = stored?.sensorMenubarItems ?? SensorMenubarItem.standard
+
         // A calibration measured on a different machine means nothing here.
         let model = sysctlString("hw.model") ?? "Mac"
         sensorCalibration = stored?.sensorCalibration.flatMap { $0.applies(to: model) ? $0 : nil }
@@ -258,6 +267,20 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         var value = module(id)
         transform(&value)
         modules[id] = value
+    }
+
+    /// Toggles a reading in the menu bar, keeping the list within what fits.
+    public func toggleSensorMenubarItem(_ item: SensorMenubarItem) {
+        if let index = sensorMenubarItems.firstIndex(of: item) {
+            // Never leave the item with nothing to draw.
+            guard sensorMenubarItems.count > 1 else { return }
+            sensorMenubarItems.remove(at: index)
+        } else {
+            sensorMenubarItems.append(item)
+            if sensorMenubarItems.count > SensorMenubarItem.maximumSelected {
+                sensorMenubarItems.removeFirst()
+            }
+        }
     }
 
     public func chartRange(_ chart: String) -> HistoryRange {
@@ -332,6 +355,7 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
             panelMaterial: nil,
             menubarGraphWidth: menubarGraphWidth,
             highlightRowsOnHover: highlightRowsOnHover,
+            sensorMenubarItems: sensorMenubarItems,
             sensorCalibration: sensorCalibration,
             timeZones: timeZones,
             timeFormat: timeFormat,

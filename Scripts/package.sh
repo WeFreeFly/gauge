@@ -75,7 +75,7 @@ What it does
 Uninstall
   Run Uninstall Gauge.command from this disk image, or delete the app and
   these files:
-      ~/Library/Preferences/com.gauge.app.plist
+      ~/Library/Preferences/com.thaisimply.gauge.plist
       ~/Library/Application Support/Gauge
 
 Quit

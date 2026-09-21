@@ -480,6 +480,130 @@ t.suite("Wording") {
     }
 }
 
+// MARK: - Menu bar readings
+
+t.suite("Sensor menu bar choice") {
+    func freshSettings() -> GaugeSettings {
+        let suite = "gauge.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return GaugeSettings(defaults: defaults)
+    }
+
+    t.test("ships showing the two readings most people want") {
+        let settings = freshSettings()
+        t.equal(settings.sensorMenubarItems, SensorMenubarItem.standard)
+        t.expect(settings.sensorMenubarItems.count <= SensorMenubarItem.maximumSelected,
+                 "default exceeds what fits")
+    }
+
+    t.test("adding a third drops the oldest") {
+        let settings = freshSettings()
+        settings.sensorMenubarItems = [.cpuDieAverage, .fanSpeed]
+        settings.toggleSensorMenubarItem(.systemPower)
+        t.equal(settings.sensorMenubarItems, [.fanSpeed, .systemPower])
+        t.equal(settings.sensorMenubarItems.count, SensorMenubarItem.maximumSelected)
+    }
+
+    t.test("the last reading cannot be removed") {
+        // An item with nothing to draw is an item nobody can click.
+        let settings = freshSettings()
+        settings.sensorMenubarItems = [.cpuDieAverage]
+        settings.toggleSensorMenubarItem(.cpuDieAverage)
+        t.equal(settings.sensorMenubarItems, [.cpuDieAverage])
+    }
+
+    t.test("toggling off leaves the rest alone") {
+        let settings = freshSettings()
+        settings.sensorMenubarItems = [.cpuDieAverage, .fanSpeed]
+        settings.toggleSensorMenubarItem(.cpuDieAverage)
+        t.equal(settings.sensorMenubarItems, [.fanSpeed])
+    }
+
+    t.test("the choice survives a reload") {
+        let suite = "gauge.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+
+        let settings = GaugeSettings(defaults: defaults)
+        settings.sensorMenubarItems = [.ssdTemperature, .batteryTemperature]
+        settings.save()
+
+        t.equal(GaugeSettings(defaults: defaults).sensorMenubarItems,
+                [.ssdTemperature, .batteryTemperature])
+    }
+
+    t.test("each reading formats in its own unit") {
+        var sensors = SensorSnapshot()
+        sensors.socTemperature = 54.4
+        sensors.peakDieTemperature = 61.2
+        sensors.systemPower = 18.6
+        sensors.storageTemperature = 42
+        sensors.batteryTemperature = 29.5
+        sensors.fans = [FanReading(id: 0, name: "Fan", rpm: 2500,
+                                   minRPM: 2000, maxRPM: 6000, targetRPM: nil)]
+
+        t.equal(SensorMenubarItem.cpuDieAverage.formatted(from: sensors, unit: .celsius), "54°C")
+        t.equal(SensorMenubarItem.cpuDieHottest.formatted(from: sensors, unit: .celsius), "61°C")
+        t.equal(SensorMenubarItem.cpuDieAverage.formatted(from: sensors, unit: .fahrenheit), "130°F")
+        t.equal(SensorMenubarItem.fanSpeed.formatted(from: sensors, unit: .celsius), "2500 rpm")
+        t.equal(SensorMenubarItem.fanPercent.formatted(from: sensors, unit: .celsius), "13%")
+        t.equal(SensorMenubarItem.systemPower.formatted(from: sensors, unit: .celsius), "19W")
+        t.equal(SensorMenubarItem.ssdTemperature.formatted(from: sensors, unit: .celsius), "42°C")
+    }
+
+    t.test("a reading this Mac does not report formats as nothing") {
+        let empty = SensorSnapshot()
+        for item in SensorMenubarItem.allCases {
+            t.isNil(item.formatted(from: empty, unit: .celsius), item.rawValue)
+        }
+    }
+
+    t.test("cluster readings are gated behind calibration") {
+        t.expect(SensorMenubarItem.performanceCluster.requiresCalibration, "performance")
+        t.expect(SensorMenubarItem.efficiencyCluster.requiresCalibration, "efficiency")
+        t.expect(!SensorMenubarItem.cpuDieAverage.requiresCalibration, "die average")
+    }
+}
+
+// MARK: - Bundle identity
+
+t.suite("Bundle identity") {
+    t.test("the identifier in the sources matches Info.plist") {
+        let plist = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()  // Sources
+            .deletingLastPathComponent()                              // project
+            .appendingPathComponent("Resources/Info.plist")
+        guard let data = try? Data(contentsOf: plist),
+              let parsed = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let dictionary = parsed as? [String: Any],
+              let identifier = dictionary["CFBundleIdentifier"] as? String
+        else {
+            t.expect(false, "could not read Info.plist")
+            return
+        }
+        t.equal(identifier, Migration.currentBundleIdentifier,
+                "Info.plist and the migration disagree")
+        t.equal(Keychain.service, identifier, "the keychain service should be the bundle id")
+    }
+
+    t.test("the old identifier is remembered so settings can be carried over") {
+        t.equal(Migration.legacyBundleIdentifier, "com.gauge.app")
+        t.expect(Migration.legacyBundleIdentifier != Migration.currentBundleIdentifier,
+                 "migration from an identifier to itself")
+    }
+
+    t.test("migration leaves other domains alone") {
+        // Tests and any other suite must not inherit a real installation's
+        // settings, or they pass or fail depending on whose Mac they run on.
+        let suite = "gauge.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        Migration.runIfNeeded(defaults: defaults)
+        t.isNil(defaults.data(forKey: "settings.v1"), "a scratch suite should stay empty")
+    }
+}
+
 // MARK: - History store
 
 t.suite("History store") {

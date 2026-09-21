@@ -6,15 +6,20 @@
 set -uo pipefail
 
 APP="/Applications/Gauge.app"
-PREFS="$HOME/Library/Preferences/com.gauge.app.plist"
+# Builds before 1.0 used com.gauge.app; clean both up.
+LEGACY_ID="com.gauge.app"
+BUNDLE_ID="com.thaisimply.gauge"
+PREFS="$HOME/Library/Preferences/$BUNDLE_ID.plist"
+LEGACY_PREFS="$HOME/Library/Preferences/$LEGACY_ID.plist"
 SUPPORT="$HOME/Library/Application Support/Gauge"
-CACHES="$HOME/Library/Caches/com.gauge.app"
-STATE="$HOME/Library/HTTPStorages/com.gauge.app"
-SAVED="$HOME/Library/Saved Application State/com.gauge.app.savedState"
+CACHES="$HOME/Library/Caches/$BUNDLE_ID"
+LEGACY_CACHES="$HOME/Library/Caches/$LEGACY_ID"
+STATE="$HOME/Library/HTTPStorages/$BUNDLE_ID"
+SAVED="$HOME/Library/Saved Application State/$BUNDLE_ID.savedState"
 
 echo "This removes Gauge and its settings:"
 echo
-for path in "$APP" "$PREFS" "$SUPPORT" "$CACHES" "$STATE" "$SAVED"; do
+for path in "$APP" "$PREFS" "$LEGACY_PREFS" "$SUPPORT" "$CACHES" "$LEGACY_CACHES" "$STATE" "$SAVED"; do
   [ -e "$path" ] && echo "  $path"
 done
 echo "  the AccuWeather key in your login keychain, if you added one"
@@ -35,17 +40,20 @@ echo "▸ Removing the login item…"
 osascript -e 'tell application "System Events" to delete login item "Gauge"' 2>/dev/null
 
 echo "▸ Removing files…"
-for path in "$APP" "$PREFS" "$SUPPORT" "$CACHES" "$STATE" "$SAVED"; do
+for path in "$APP" "$PREFS" "$LEGACY_PREFS" "$SUPPORT" "$CACHES" "$LEGACY_CACHES" "$STATE" "$SAVED"; do
   if [ -e "$path" ]; then
     rm -rf "$path" 2>/dev/null || sudo rm -rf "$path"
   fi
 done
 
 echo "▸ Removing the keychain item…"
-security delete-generic-password -s "com.gauge.app" >/dev/null 2>&1
+security delete-generic-password -s "$BUNDLE_ID" >/dev/null 2>&1
+security delete-generic-password -s "$LEGACY_ID" >/dev/null 2>&1
 
 # Preferences are cached by the system; without this they can come back.
-defaults read com.gauge.app >/dev/null 2>&1 && defaults delete com.gauge.app 2>/dev/null
+for domain in "$BUNDLE_ID" "$LEGACY_ID"; do
+  defaults read "$domain" >/dev/null 2>&1 && defaults delete "$domain" 2>/dev/null
+done
 killall cfprefsd 2>/dev/null
 
 echo

@@ -96,6 +96,13 @@ intermediate is not shipped with macOS — without it a correctly issued
 certificate imports and then reports `CSSMERR_TP_NOT_TRUSTED`, which reads
 like a mismatched key and is not one.
 
+`pkgbuild` prints `write: Permission denied` four times on some machines. It
+comes from a helper it runs internally, not from anything here — it appears
+with a one-file payload written to a temporary directory — and the package is
+unaffected: `package.sh` unpacks and checks every build, and Apple's notary
+service accepts them. The lines are left visible rather than filtered, since
+swallowing "permission denied" is how a real failure goes unnoticed.
+
 Without a certificate the build falls back to an ad-hoc signature. That runs
 fine locally, but on another Mac the first launch needs a right-click →
 **Open**, or:

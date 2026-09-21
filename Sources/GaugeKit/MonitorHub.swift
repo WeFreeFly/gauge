@@ -19,6 +19,8 @@ public final class MonitorHub: ObservableObject {
         public var topByCPU: [ProcessUsage] = []
         public var topByMemory: [ProcessUsage] = []
         public var timestamp = Date()
+
+        public init() {}
     }
 
     public struct Series: Sendable {

@@ -198,11 +198,20 @@ struct ModuleSettingsView: View {
         }
 
         switch module {
-        case .network: NetworkSettings()
-        case .weather: WeatherSettings()
-        case .time:    TimeSettings()
-        case .sensors: SensorSettings()
-        default:       EmptyView()
+        case .network:  NetworkSettings()
+        case .weather:  WeatherSettings()
+        case .time:     TimeSettings()
+        case .sensors:  SensorSettings()
+        case .combined: CombinedSettings()
+        default:        EmptyView()
+        }
+    }
+}
+
+struct CombinedSettings: View {
+    var body: some View {
+        SettingsGroup("Menu bar readings") {
+            CombinedMenubarPicker(style: .full)
         }
     }
 }

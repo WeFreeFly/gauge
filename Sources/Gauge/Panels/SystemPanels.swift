@@ -574,6 +574,8 @@ struct CombinedPanel: View {
                 }
             }
 
+            CombinedMenubarPicker(style: .compact)
+
             MetricChart(
                 chart: "combined.cpu",
                 title: "CPU",

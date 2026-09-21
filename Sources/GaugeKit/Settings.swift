@@ -142,6 +142,9 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
     /// What the Sensors menu bar item shows, in order.
     @Published public var sensorMenubarItems: [SensorMenubarItem] { didSet { scheduleSave() } }
 
+    /// What the Combined menu bar item shows, in order.
+    @Published public var combinedMenubarItems: [CombinedMenubarItem] { didSet { scheduleSave() } }
+
     /// Result of the last sensor calibration, if one has been run on this Mac.
     @Published public var sensorCalibration: SensorCalibration? { didSet { scheduleSave() } }
 
@@ -174,6 +177,7 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         var menubarGraphWidth: Double?
         var highlightRowsOnHover: Bool?
         var sensorMenubarItems: [SensorMenubarItem]?
+        var combinedMenubarItems: [CombinedMenubarItem]?
         var sensorCalibration: SensorCalibration?
         var timeZones: [String]?
         var timeFormat: String?
@@ -233,6 +237,7 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
         highlightRowsOnHover = stored?.highlightRowsOnHover ?? true
 
         sensorMenubarItems = stored?.sensorMenubarItems ?? SensorMenubarItem.standard
+        combinedMenubarItems = stored?.combinedMenubarItems ?? CombinedMenubarItem.standard
 
         // A calibration measured on a different machine means nothing here.
         let model = sysctlString("hw.model") ?? "Mac"
@@ -279,6 +284,20 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
             sensorMenubarItems.append(item)
             if sensorMenubarItems.count > SensorMenubarItem.maximumSelected {
                 sensorMenubarItems.removeFirst()
+            }
+        }
+    }
+
+    /// Same rule as the sensors item: keep it within what fits, and never
+    /// leave the menu bar item with nothing to draw.
+    public func toggleCombinedMenubarItem(_ item: CombinedMenubarItem) {
+        if let index = combinedMenubarItems.firstIndex(of: item) {
+            guard combinedMenubarItems.count > 1 else { return }
+            combinedMenubarItems.remove(at: index)
+        } else {
+            combinedMenubarItems.append(item)
+            if combinedMenubarItems.count > CombinedMenubarItem.maximumSelected {
+                combinedMenubarItems.removeFirst()
             }
         }
     }
@@ -356,6 +375,7 @@ public final class GaugeSettings: ObservableObject, @unchecked Sendable {
             menubarGraphWidth: menubarGraphWidth,
             highlightRowsOnHover: highlightRowsOnHover,
             sensorMenubarItems: sensorMenubarItems,
+            combinedMenubarItems: combinedMenubarItems,
             sensorCalibration: sensorCalibration,
             timeZones: timeZones,
             timeFormat: timeFormat,

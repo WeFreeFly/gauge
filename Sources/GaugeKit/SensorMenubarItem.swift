@@ -40,6 +40,23 @@ public enum SensorMenubarItem: String, Codable, CaseIterable, Sendable, Identifi
         }
     }
 
+    /// For the summary line in the dropdown; the menu keeps the long names.
+    public func shortTitle(performanceCluster: String = "Performance",
+                           efficiencyCluster: String = "Efficiency") -> String {
+        switch self {
+        case .cpuDieAverage: "CPU die"
+        case .cpuDieHottest: "Hottest die"
+        case .performanceCluster: String(performanceCluster.prefix(5))
+        case .efficiencyCluster: String(efficiencyCluster.prefix(5))
+        case .fanSpeed: "Fan"
+        case .fanPercent: "Fan %"
+        case .systemPower: "Power"
+        case .adapterPower: "Adapter"
+        case .ssdTemperature: "SSD"
+        case .batteryTemperature: "Battery"
+        }
+    }
+
     /// Needs a calibration before it can be offered.
     public var requiresCalibration: Bool {
         self == .performanceCluster || self == .efficiencyCluster

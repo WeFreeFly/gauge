@@ -107,14 +107,18 @@ enum MenubarContentBuilder {
             return content
 
         case .combined:
-            content.lines = [
-                "\(Format.percent(snapshot.cpu.total))  \(Format.percent(snapshot.memory.usedFraction))",
-                "↓\(rate(snapshot.network.downloadRate, bits: settings.networkUnitBits))"
-                + " ↑\(rate(snapshot.network.uploadRate, bits: settings.networkUnitBits))",
-            ]
+            // Chosen readings, laid out two to a line: one line if there are
+            // one or two, two lines beyond that.
+            let chosen = settings.combinedMenubarItems.prefix(CombinedMenubarItem.maximumSelected)
+            let rendered = chosen.compactMap {
+                $0.formatted(from: snapshot,
+                             temperatureUnit: settings.temperatureUnit,
+                             networkInBits: settings.networkUnitBits)
+            }
+            content.lines = rendered.isEmpty ? ["—"] : CombinedMenubarItem.pack(rendered)
             content.series = series.cpu
             content.seriesMaximum = 1
-            content.loadFraction = snapshot.cpu.total
+            content.loadFraction = chosen.first?.loadFraction(from: snapshot)
             return content
         }
     }

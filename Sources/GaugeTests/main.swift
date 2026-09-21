@@ -566,6 +566,86 @@ t.suite("Sensor menu bar choice") {
     }
 }
 
+t.suite("Combined menu bar choice") {
+    func freshSettings() -> GaugeSettings {
+        let suite = "gauge.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return GaugeSettings(defaults: defaults)
+    }
+
+    t.test("the default reproduces what it showed before it was configurable") {
+        let settings = freshSettings()
+        t.equal(settings.combinedMenubarItems, [.cpu, .memory, .networkDown, .networkUp])
+        t.equal(settings.combinedMenubarItems.count, CombinedMenubarItem.maximumSelected)
+    }
+
+    t.test("a fifth reading drops the oldest") {
+        let settings = freshSettings()
+        settings.toggleCombinedMenubarItem(.temperature)
+        t.equal(settings.combinedMenubarItems, [.memory, .networkDown, .networkUp, .temperature])
+    }
+
+    t.test("the last reading cannot be removed") {
+        let settings = freshSettings()
+        settings.combinedMenubarItems = [.cpu]
+        settings.toggleCombinedMenubarItem(.cpu)
+        t.equal(settings.combinedMenubarItems, [.cpu])
+    }
+
+    t.test("the choice survives a reload") {
+        let suite = "gauge.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        let settings = GaugeSettings(defaults: defaults)
+        settings.combinedMenubarItems = [.gpu, .battery]
+        settings.save()
+        t.equal(GaugeSettings(defaults: defaults).combinedMenubarItems, [.gpu, .battery])
+    }
+
+    t.test("readings pack two to a line") {
+        t.equal(CombinedMenubarItem.pack([]), [])
+        t.equal(CombinedMenubarItem.pack(["45%"]), ["45%"])
+        t.equal(CombinedMenubarItem.pack(["45%", "72%"]), ["45%  72%"])
+        t.equal(CombinedMenubarItem.pack(["45%", "72%", "↓1K"]), ["45%  72%", "↓1K"])
+        t.equal(CombinedMenubarItem.pack(["45%", "72%", "↓1K", "↑2K"]), ["45%  72%", "↓1K  ↑2K"])
+    }
+
+    t.test("packing never produces more than two lines at the maximum") {
+        let values = (0..<CombinedMenubarItem.maximumSelected).map { "v\($0)" }
+        t.expect(CombinedMenubarItem.pack(values).count <= 2,
+                 "got \(CombinedMenubarItem.pack(values).count) lines")
+    }
+
+    t.test("every reading formats from a live snapshot or says nothing") {
+        // MonitorHub is main-actor bound; the collectors it drives are not, so
+        // the snapshot is assembled directly here.
+        let cpu = CPUMonitor(), memory = MemoryMonitor(), gpu = GPUMonitor()
+        let disk = DiskMonitor(), network = NetworkMonitor()
+        let sensors = SensorMonitor(), battery = BatteryMonitor()
+        _ = cpu.sample(); _ = disk.sample(); _ = network.sample()
+        Thread.sleep(forTimeInterval: 0.4)
+
+        var snapshot = MonitorHub.Snapshot()
+        snapshot.cpu = cpu.sample()
+        snapshot.memory = memory.sample()
+        snapshot.gpu = gpu.sample()
+        snapshot.disk = disk.sample()
+        snapshot.network = network.sample()
+        snapshot.sensors = sensors.sample()
+        snapshot.battery = battery.sample()
+
+        for item in CombinedMenubarItem.allCases {
+            let text = item.formatted(from: snapshot, temperatureUnit: .celsius,
+                                      networkInBits: false)
+            if let text {
+                t.expect(!text.isEmpty, "\(item.rawValue) formatted to an empty string")
+                t.expect(text.count <= 10, "\(item.rawValue) is \(text.count) characters: \(text)")
+            }
+        }
+    }
+}
+
 // MARK: - Bundle identity
 
 t.suite("Bundle identity") {
